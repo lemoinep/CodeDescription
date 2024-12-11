@@ -1,0 +1,426 @@
+*State of the Art of*
+
+*Bounding Volume Hierarchy (BVH)*
+
+*Ray Tracing across GPU & CPU*
+[.text-justify]
+Bounding Volume Hierarchies (BVH) and ray tracing are pivotal techniques
+in the realm of computer graphics, particularly when it comes to
+rendering realistic images. BVH acts as a spatial data structure that
+optimizes the ray tracing process by organizing geometric objects into a
+hierarchy of bounding volumes. This means that instead of checking every
+individual object for intersection with rays, the algorithm can quickly
+eliminate large groups of objects that don’t intersect with the ray’s
+path. This hierarchical approach significantly reduces computation
+times, allowing for more complex scenes to be rendered efficiently.
+[.text-justify]
+On the other hand, executing ray tracing on CPUs versus GPUs presents
+different advantages and challenges. CPUs excel in tasks requiring high
+single-threaded performance and complex computations, making them
+suitable for detailed simulations or intricate calculations where
+precision is paramount. However, they tend to struggle with parallel
+processing due to their limited cores compared to GPUs. In contrast,
+GPUs are designed for highly parallelizable tasks, making them ideal for
+performing extensive ray tracing operations simultaneously across
+multiple pixels.
+[.text-justify]
+Ultimately, the choice between using BVH with CPU or GPU-based ray
+tracing hinges on specific project requirements. For real-time
+applications like video games where speed is essential, GPU-accelerated
+ray tracing combined with BVH can deliver stunning visuals without
+compromising performance. Conversely, for offline rendering tasks or
+situations demanding higher quality outputs where time is not as
+critical, leveraging CPUs might be more advantageous.
+[.text-justify]
+The current landscape of ray tracing and BVH techniques is rapidly
+evolving, with significant advancements in both hardware and software
+across various platforms, including AMD GPUs, NVIDIA's CUDA
+architecture, and CPU implementations. We present also a comprehensive
+overview of the state of ray tracing and BVH techniques as of 2024.
+
+*1. Ray Tracing Overview*
+[.text-justify]
+Ray tracing is a rendering technique that simulates the way light
+interacts with objects to produce highly realistic images. The basic
+algorithm involves casting primary rays from the camera and then
+calculating intersections with objects in the scene. For each
+intersection, secondary rays can be generated (reflection, refraction,
+etc.) to simulate optical effects. The performance of ray tracing
+depends on the quality of the acceleration structure (like BVH) and the
+intersection algorithms used. BVH is a key technique for accelerating
+ray tracing, and research continues to improve these algorithms for
+optimal performance. With advancements in GPU technology, real-time ray
+tracing has become feasible, allowing for enhanced visual fidelity in
+applications ranging from video games to architectural visualization.
+
+*2. Bounding Volume Hierarchy (BVH)*
+[.text-justify]
+Bounding Volume Hierarchy (BVH) algorithms play a role in the realm of
+graphics and computer animation. These algorithms optimize the
+performance of ray tracing and other rendering methods by structuring
+the objects in a scene into a data format. Typically organized as an
+n-ary tree, with nodes linked to bounding volumes such as boxes and
+leaves containing lists of primitives such as triangles. The efficiency
+of BVH tree construction depends on the number of triangular facets
+included in each bounding volume. Various domain specific strategies and
+programming approaches have been suggested to enhance ray traversal and
+intersection functions in BVH. A significant advantage of BVH algorithms
+lies in their ability to manage scenes containing objects. By arranging
+the scene BVH algorithms can swiftly navigate through the scene.
+Pinpoint relevant objects without needing to test each object
+individually for intersections. This characteristic makes BVH algorithms
+indispensable for real time rendering tasks like video games and
+interactive visualizations. Moreover these algorithms are adaptable. Can
+be fine tuned for hardware setups like GPUs and CPUs. The parallel
+assembly of bounding volume hierarchy (BVH), on GPUs is currently an
+area of exploration.
+
+*2.1 Some key points regarding BVH performance in parallel programming
+and on GPU*
+[.text-justify]
+Building the BVH on GPU aims to speed up the process of creating the BVH
+structure used in ray tracing and other applications. Modern GPUs offer
+great parallel computing power, making them well suited to building BVH.
+Several parallel approaches have been proposed, including the use of
+CUDA (Compute Unified Device Architecture) to accelerate construction
+[1]. Using methods such as sorting objects based on their Morton Code
+(traversal order) can improve the performance of building BVH on GPU.
+[.text-justify]
+*Linear BVH (LBVH):* The Linear Bounding Volume Hierarchy (LBVH), or
+linear bounding volume hierarchy, is a promising approach for the
+parallel construction of BVH (Bounding Volume Hierarchy).The most
+promising approach for parallel BVH construction is the use of an LBVH
+(Linear BVH). LBVH simplifies the problem by first choosing the order in
+which the leaf nodes (corresponding to each object) appear in the tree,
+then generating the internal nodes so as to respect this order . This
+method makes it possible to efficiently exploit the parallel computing
+power of GPUs. The main advantages of LBVH is faster to construct than
+other surface area heuristic (SAH)-based methods. It can handle dynamic
+scenes (where objects move) by recycling the same BVH with incremental
+updates but the quality of BVH generated by LBVH may be lower than that
+of SAH builders. This can lead to less effective collision and ray
+tests, especially when objects overlap or have complex shapes.
+[.text-justify]
+*Dynamic scenes and recycling of the BVH:* In dynamic scenes (where
+objects are moving), it is common to recycle the same BVH at each
+simulation step. We only recalculate the bounding boxes of the nodes
+based on the new positions of the objects, while preserving the
+hierarchical structure of the nodes. However, these algorithms can run
+into problems when the tree deteriorates unpredictably over time. When
+objects move (dynamic scene), the LBVH can update the existing BVH
+without completely rebuilding it. When an object moves, the LBVH updates
+the relevant nodes in the tree. This saves calculation time compared to
+a complete reconstruction. The LBVH reuses the initial BVH, updating it
+as the scene changes. This approach is more efficient than
+reconstructing the BVH at each frame. Although the LBVH can update the
+BVH incrementally, it cannot handle all types of changes. For example,
+if an object radically changes shape, the BVH may require a complete
+reconstruction.
+
+*2.2 Alternatives techniques*
+[.text-justify]
+*GBVH (Grid-induced Boundary Volume Hierarchy):* The GBVH only updates
+the modified part of the scene. It recalculates the node bounding boxes
+based on the new object positions, while retaining the existing
+hierarchical structure (10). How it works. The GBVH divides the stage
+space into a regular grid. Each grid cell contains a group of objects.
+This grid allows you to quickly locate objects in space. When the GBVH
+is first constructed, the objects are distributed among the grid cells.
+Each cell becomes a node of the GBVH. When objects move, the GBVH
+updates only the affected cells. It recalculates the bounding boxes of
+the affected nodes. The main advantages is that GBVH reduces the initial
+construction cost compared to LBVH. It is effective for dynamic scenes
+with frequent movements.
+[.text-justify]
+*OLBVH* (Octree Linear Bounding Volume Hierarchy): OLBVH is used for GPU
+acceleration of direct volume rendering and interior-exterior
+intersection testing on volumetric meshes. It's octree-based data
+structure is laid out linearly in memory using Morton curves. BVH for
+volumetric meshes, for example tetrahedral meshes used in finite element
+simulations, must have different characteristics to achieve high
+performance. The OLBVH, a linear BVH based on the Morton curve for
+volumetric meshes that produces memory efficient trees in a time
+efficient manner. Heuristics used during construction are controlled by
+parameters, allowing faster construction and a reduced memory footprint
+by generating shallower trees. The OLBVH is a versatile acceleration
+framework for volumetric meshes.
+[.text-justify]
+*PLOC* (Parallel locally ordered clustering Parallel locally ordered
+clustering): Meister and Bittner [19] is a parallel bottom-up
+construction algorithm based on agglomerative clustering. The algorithm
+starts from the individual triangles by considering them as clusters.
+Then, in each iteration, it merges multiple cluster pairs in parallel,
+repeating this until only one cluster remains, which corresponds to the
+root node. The algorithm employs the Morton curve to find the nearest
+neighbors efficiently
+[.text-justify]
+*TRBVH* (Treelet restructuring Treelet restructuring): is a parallel
+optimization method that improves the quality of an existing BVH Karras
+and Aila [20]. The algorithm starts from the leaves and proceeds up to
+the root until a given treelet size is reached. Then, the treelets are
+restructured in order to locally minimize the BVH cost induced by a
+particular treelet. After the treelet is restructured, the algorithm
+continues one level above and repeats the process. To avoid race
+conditions, a node is only processed by the second thread (in the case
+of binary BVHs) using atomic counters to be sure that both children were
+already processed. Karras and Aila [20] restructured the treelet in an
+optimal way regarding the cost function using a dynamic programming
+approach. Later, Domingues and Pedrini [21] showed that better results
+could be achieved using agglomerative clustering (agglomerative treelet
+restructuring, ATR-BVH), which is simple and thus allows for
+restructuring large treelets. This approach provides BVHs of very good
+quality in reasonable times.
+[.text-justify]
+*Kd-trees:* Similarly to BVHs we build SAH kd-trees using 32 splitting
+plane candidates in each node evenly distributed along the x, y, z
+extents of its axis-aligned bounding box. Given the axis-aligned
+bounding box of an interior node, the splitting plane candidates are
+distributed the same way as for the BVH. Unlike for the BVHs, when all
+triangles fall into one child of a node, an empty leaf is created for
+the other child. The kd-trees are built with split clipping to get high
+quality trees. With split clipping enabled a triangle is only considered
+to fall into a child if it intersects its bounding box. These auxiliary
+bounding boxes are then used for more precise triangle-child
+intersection tests. We implement split clipping by directly computing
+the intersection of each triangle with the bounding boxes of the
+children of the currently subdivided node. Akenine-Mo"ller [22]
+
+[width="100%",cols="19%,81%",]
+|===
+|*Techniques in BVH Implementation* |
+
+|*Linear BVH (LBVH)* a|
+Description: LBVH is a straightforward approach that sorts primitives
+along a Morton curve to create a linear representation of the BVH.
+
+Advantages: It allows for efficient memory access patterns during
+traversal due to its contiguous memory layout.
+
+Disadvantages: LBVH can lead to suboptimal performance in dynamic scenes
+where object positions change frequently.
+
+|*Spatial BVH* a|
+Description: This technique partitions space into regions and creates
+bounding volumes around these regions.
+
+Advantages: It adapts well to complex geometries and can efficiently
+handle dynamic scenes by updating only affected parts of the tree.
+
+Disadvantages: The construction can be computationally expensive,
+especially for large scenes.
+
+|*Hierarchical BVH* a|
+Description: A tree structure where each node represents a bounding
+volume containing child nodes or geometric primitives.
+
+Advantages: This method allows for more efficient traversal since it can
+skip entire branches of the tree when rays miss bounding volumes.
+
+Disadvantages: Building and maintaining a hierarchical structure can be
+complex and may require additional memory overhead.
+
+|*Dynamic BVH Updates* a|
+Description: Techniques such as refitting (updating bounding volumes
+without rebuilding) or rebuilding portions of the BVH are employed to
+manage dynamic scenes effectively.
+
+Advantages: These methods allow for real-time updates without
+significant performance penalties.
+
+Disadvantages: They may still incur overhead during frequent updates.
+
+|===
+
+*3 The key benefits of using (BVHs) in real-time ray tracing
+applications*
+[.text-justify]
+Efficient Ray Traversal: BVHs allow for very fast traversal of rays
+through a complex 3D scene. By organizing objects into a hierarchical
+structure of bounding volumes, the number of intersection tests required
+is significantly reduced, enabling real-time performance.
+[.text-justify]
+* *Handling Dynamic Scenes:* BVHs can be efficiently updated when
+objects in the scene move or deform, allowing real-time ray tracing of
+dynamic environments. Techniques like BVH refitting and rebuilding
+enable the acceleration structure to be quickly adapted to scene
+changes.
+* *Parallelization:* The hierarchical nature of BVHs makes them
+well-suited for parallel processing on multi-core CPUs and GPUs. The
+independent traversal of different parts of the BVH can be easily
+parallelized, further boosting performance.
+* *Simplicity and Generality:* Compared to other acceleration
+structures, BVHs are relatively simple to implement and maintain. They
+make few assumptions about the underlying scene, allowing them to be
+used for a wide range of ray tracing applications, including path
+tracing, photon mapping, and more [23][25].
+* *Memory Efficiency:* BVHs can be stored in a compact, memory-efficient
+format, which is important for real-time applications that need to fit
+the entire scene in GPU memory [27].
+* *Optimizations:* Numerous optimization techniques have been developed
+for BVHs, such as the Surface Area Heuristic (SAH) for construction,
+ordered traversal, and binned BVH building, which further improve their
+performance [24][25].
+
+*4. AMD's Ray Tracing Architecture*
+[.text-justify]
+AMD has made significant strides in ray tracing capabilities with its
+RDNA architectures (RDNA 2 and RDNA 3). Ray Accelerators: Integrated
+into the compute units to enhance ray tracing performance without
+dedicated RT cores. Intersection Test Instructions: Specialized
+instructions added to texture units enable efficient ray-object
+intersection calculations, improving overall throughput. Deep BVH
+Structures: RDNA architectures utilize deep BVH with multiple
+subdivisions to optimize memory usage and reduce intersection test
+throughput demands[1][3].
+[.text-justify]
+Concerning performance improvements a recent developments indicate that
+AMD is working on enhancing ray tracing performance through neural
+networks, which could lead to up to 1.5x faster ray tracing capabilities
+in future architectures like RDNA 5[2]. Current RDNA 3 GPUs have shown
+improved performance but still lag behind NVIDIA's dedicated RT cores in
+certain scenarios[4].
+
+*5. NVIDIA's CUDA Architecture*
+[.text-justify]
+NVIDIA has been at the forefront of ray tracing technology since the
+introduction of its RTX series with dedicated RT cores. The architecture
+utilizes: a dedicated RT Cores, specialized hardware designed to
+accelerate ray-triangle intersection tests and a high throughput. the
+Ampere architecture doubles the ray-triangle intersection test rate
+compared to previous generations, allowing for more complex scenes to be
+rendered efficiently[3].
+
+Techniques Used:
+[.text-justify]
+* Inline vs. Indirect Ray Tracing: NVIDIA supports both methods through
+its DirectX Raytracing (DXR) API. Inline ray tracing combines traversal
+and shading into a single shader program, while indirect ray tracing
+separates these tasks into different shaders[3].
+* Adaptive Sampling Techniques: These methods dynamically adjust the
+number of rays cast based on scene complexity or variance in pixel color
+values. Areas with high detail receive more rays, while simpler areas
+receive fewer, optimizing rendering time without sacrificing quality.
+
+*6. CPU Implementations*
+[.text-justify]
+While GPUs dominate real-time ray tracing, CPUs are still relevant for
+offline rendering applications where higher precision is required.
+Techniques include:
+[.text-justify]
+* Monte Carlo Ray Tracing: A probabilistic method used for rendering
+complex scenes by simulating light paths.
+* Adaptive Sampling: Dynamically adjusting the number of rays cast based
+on scene complexity to optimize rendering times.
+* Hybrid Rendering Techniques: Combining rasterization with ray tracing
+allows developers to leverage the strengths of both methods. For
+example, rasterization can handle primary visibility while ray tracing
+can be used for reflections and shadows.
+
+*7. Current Challenges*
+
+Despite advancements, several challenges remain in the realm of ray
+tracing:
+[.text-justify]
+* Performance Overhead: Ray tracing can significantly impact frame rates
+due to its computational intensity.
+* Memory Latency: Both AMD and NVIDIA architectures face challenges
+related to cache and memory latency during BVH traversal[3][4].
+* Integration with Rasterization: Balancing traditional rasterization
+techniques with ray tracing remains a key focus for developers.
+
+*8. Solar Shading and Ray Tracing*
+[.text-justify]
+Solar shading algorithms with ray tracing are a powerful tool for
+optimizing building design and energy efficiency. Through the use of
+advanced computer simulations, these algorithms can accurately model the
+way sunlight interacts with a building's structure, allowing architects
+and engineers to predict and mitigate the effects of solar heat gain. At
+the heart of these algorithms is the process of ray tracing, which
+involves simulating the paths of individual light rays as they bounce
+and refract through a virtual 3D model of a building. By tracking the
+behavior of these rays, the software can determine precisely how much
+solar radiation is entering the building at any given time, and make
+adjustments to the design to reduce unwanted heat transfer. The benefits
+of using solar shading algorithms with ray tracing are numerous. Not
+only can they help to lower a building's energy consumption and
+associated costs, but they can also improve occupant comfort by
+regulating indoor temperatures and reducing glare. Additionally, these
+tools can be used to explore a wide range of design options, allowing
+architects to find the most optimal solution for a given project.
+
+(...)
+
+*9. Future Directions*
+[.text-justify]
+Looking ahead, both AMD and NVIDIA are expected to continue improving
+their ray tracing technologies. AMD's RDNA 5 Architecture: Anticipated
+improvements in ray tracing performance through architectural
+enhancements and deeper integration of neural network techniques[1][2].
+NVIDIA's Next Generation: Expected advancements in dedicated RT cores
+and further optimizations for real-time applications.
+
+(...)
+
+*Conclusion*
+[.text-justify]
+In summary, the hierarchical structure, efficient traversal, and ability
+to handle dynamic scenes make BVHs a crucial component in enabling
+real-time ray tracing on modern hardware, powering advanced rendering
+techniques in games, visual effects, and other interactive applications.
+Building BVH on GPU is an active research area, and parallel approaches
+such as LBVH have shown promising performance. LBVH is an effective
+approach for parallel BVH construction, especially for dynamic scenes.
+It optimizes performance while minimizing build time. LBVH is effective
+for dynamic scenes, but these limitations must be taken into account.
+Other approaches, such as adaptive BVHs, may be more appropriate for
+certain situations. Le GBVH uses a spatial grid to organize objects and
+handles updates incrementally. This helps optimize performance while
+taking into account changes in the scene.
+
+The state of BVH and ray tracing continues to evolve rapidly across AMD,
+NVIDIA, and CPU platforms. While AMD has made notable progress with its
+RDNA architectures, it still faces challenges in matching NVIDIA's
+performance levels in certain scenarios. As both companies push forward
+with new technologies and optimizations, the future of real-time ray
+tracing looks promising, with enhanced realism set to become
+increasingly accessible in gaming and professional applications alike.
+
+*References*
+
+** [1] https://www.pcgamesn.com/amd/rdna-5-ray-tracing
+** [2] https://www.youtube.com/watch?v=_Kgc5cAQl1I
+** [3] https://chipsandcheese.com/p/raytracing-on-amds-rdna-2-3-and-nvidias-turing-and-pascal
+** [4] https://www.howtogeek.com/its-2024-can-amd-graphics-cards-handle-ray-tracing-yet/
+** [5] https://gpuopen.com/learn/improving-rt-perf-with-rra/
+** [6] https://community.amd.com/t5/gaming/maximum-ray-tracing-performance-with-amd-fsr-2-and-amd-radeon-rx/ba-p/604780
+** [7] https://www.youtube.com/watch?v=kANMoO-TvDs
+** [8] https://www.reddit.com/r/buildapc/comments/11cklwh/just_how_bad_are_amd_cards_at_ray_tracing/
+
+** [1] Thinking Parallel, Part III: Tree Construction on the GPU.https://developer.nvidia.com/blog/thinking-parallel-part-iii-tree-construction-gpu/.
+** [2] GPU BVH Construction - Edge of Map.https://edgeofmap.com/blog/2017/10/gpu-bvh-construction/.
+** [3] Parallelization of BVH and BSP on the GPU |hgpu.org.https://hgpu.org/?p=16897.
+** [4] Fast BVH Construction on GPUs - University of North Carolina at
+Chapel Hill.https://www.cs.unc.edu/~geom/papers/documents/articles/2009/lauterbach09.pdf.
+** [5] Thinking Parallel, Part I: Collision Detection on the GPU | NVIDIA....https://cgvr.cs.uni-bremen.de/teaching/mpar_literatur/Parallel%20BVH%20Construction,%20with%20Application%20to%20Collision%20Detection.pdf.
+** [6] Thinking Parallel, Part II: Tree Traversal on the GPU.https://developer.nvidia.com/blog/thinking-parallel-part-ii-tree-traversal-gpu/.
+** [7] Grid-based SAH BVH construction on a GPU | The Visual Computer - Springer.https://link.springer.com/article/10.1007/s00371-011-0593-8.
+** [8] Parallel BVH construction using k -means clustering - Springer.https://link.springer.com/article/10.1007/s00371-016-1241-0.
+** [9] Grid-induced bounding volume hierarchy for ray tracing dynamicscenes....https://link.springer.com/article/10.1007/s00371-021-02205-3.
+** [10] OLBVH: octree linear bounding volume hierarchy for ... - Springer.https://link.springer.com/article/10.1007/s00371-020-01886-6.
+** [11] Thinking Parallel, Part III: Tree Construction on the GPU.https://developer.nvidia.com/blog/thinking-parallel-part-iii-tree-construction-gpu/.
+** [12] algorithm - what is meant by linearization of BVH and bucket count for ....https://stackoverflow.com/questions/19166121/what-is-meant-by-linearization-of-bvh-and-bucket-count-for-sah.
+** [13] BVH_LinearBuilder< T, N > Class Template Reference.https://dev.opencascade.org/doc/occt-7.6.0/refman/html/class_b_v_h___linear_builder.html.
+** [14] RaTrace: Simple and Efficient Abstractions for BVH Ray Traversal Algorithms.https://graphics.cg.uni-saarland.de/papers/perard-2017-gpce.pdf.
+** [15] An Improved Ray Tracing Acceleration Algorithm Based on Bounding Volume....https://arxiv.org/pdf/2208.10008.
+** [16] 1.1 - Principle of the algorithm - Claude Bernard University Lyon 1.https://perso.univ-lyon1.fr/jean-claude.iehl/Public/educ/ENS/chap9_ray_tracing.pdf.
+** [17] Performance Comparison of Bounding Volume Hierarchies for GPU Ray Tracing.https://jcgt.org/published/0011/04/01/paper.pdf.
+** [18] MEISTER, D., AND BITTNER, J. 2018. Parallel locally-ordered clustering for bounding volume hierarchy construction. IEEE Transactions on Visualization and Computer Graphics 24, 3, 1345 1353. URL: https://doi.org/10.1109/TVCG.2017.2669983. 5, 8
+** [19] MEISTER, D., AND BITTNER, J. 2018. Parallel reinsertion for bounding volume hierarchy optimization. Computer Graphics Forum (Proceedings of Eurographics) 37, 2, 463 473. URL: https://diglib.eg.org:443/handle/10.1111/cgf13376. 5, 6,8
+** [20] KARRAS, T., AND AILA, T. 2013. Fast parallel construction of high-quality bounding volume hierarchies. In Proceedings of the 5th High-Performance Graphics Conference, Association for Computing Machinery, 89 99. URL: https://doi.org/10.1145/2492045.2492055. 5
+** [21] DOMINGUES, L., AND PEDRINI, H. 2015. Bounding volume hierarchy optimization through agglomerative treelet restructuring. In Proceedings of the 7th Conference on High-Performance Graphic, Association for Computing Machinery, 13 20. URL: https://doi.org/10.1145/2790060.2790065. 5, 8
+** [22] AKENINE-MOLLER, T. 2005. Fast 3D Triangle-box Overlap Testing. In ACM SIGGRAPH 2005 Courses, ACM, New York, NY, USA, SIGGRAPH 05
+** [23] http://gamma.cs.unc.edu/BVH/paper_rt06.pdf
+** [24] https://www.sciencedirect.com/science/article/abs/pii/S0097849307002014
+** [25] https://jacco.ompf2.com/2022/04/13/how-to-build-a-bvh-part-1-basics/
+** [26] https://www.sci.utah.edu/~wald/Publications/2008/Async/AsyncBVHJournal.pdf
+** [27] https://www.reddit.com/r/rust/comments/692jjz/bvh_a_speedy_implementation_for_building_and/
