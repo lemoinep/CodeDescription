@@ -235,7 +235,7 @@ Here’s a simplified diagram representing the flow of operations within `raytra
 
 ```plaintext
 +-----------------------------------------------------+
-|                   buildBVH_GPU.                     |
+|                   buildBVH_GPU                      |
 |-----------------------------------------------------|
 | 1. Initialize BVH Nodes                             |
 |    - Resize nodes vector to hold BVH nodes          |
@@ -383,8 +383,6 @@ Here’s a simplified diagram representing the flow of operations within `raytra
                 mid = start + ( end - start ) / 2;
             }
 
-            // std::cout<<"mid="<<mid<<"\n"; CTRL OK
-
             // Create the child nodes
             node.leftChild = ++nodeIndex;
             buildBVH_AABB_Recursive( triangles, aabbs, centroids, nodes, nodeIndex, start, mid );
@@ -528,7 +526,6 @@ Here’s a simplified diagram representing the flow of operations within `raytra
                     mid = currentStart + ( currentEnd - currentStart ) / 2;
                 }
 
-                // std::cout<<"mid="<<mid<<"\n";
                 node.leftChild = ++nodeIndex;
                 node.rightChild = ++nodeIndex;
 
@@ -862,8 +859,6 @@ Here’s a simplified diagram representing the flow of operations within `raytra
                 // If the partition did not divide the triangles, force a division in the middle
                 mid = start + ( end - start ) / 2;
             }
-
-            // std::cout<<"mid="<<mid<<"\n"; CTRL OK
 
             // Create the child nodes
             node.leftChild = ++nodeIndex;
@@ -1509,9 +1504,9 @@ Several functions are integral to constructing the BVH hierarchy on both CPU and
 - **`buildBVHRecursive`**: Constructs the BVH recursively, dividing triangles into subgroups based on their spatial positions.
 - **`buildBVH_CPU_Recursive`**: A CPU-based version of the recursive construction function.
 - **`initializeLeaves`**: Prepares leaf nodes with corresponding triangles, ensuring that each leaf node accurately represents its contained geometry.
-- **`buildBVH_GPU_Version2`**: A GPU-optimized version of the BVH construction process.
+- **`buildBVH_GPU`**: A GPU-optimized version of the BVH construction process.
 
-This clear distinction between CPU and GPU logic is essential for maximizing the parallel capabilities of GPUs.
+This clear distinction between CPU and GPU logic is essential for maximizing the parallel capabilities of GPUs. This allows you to test how it works.
 
 ### Sorting Algorithm
 [.text-justify]
@@ -1705,7 +1700,7 @@ The function `rayTriangleIntersect` checks if a ray intersects a given triangle 
 ```plaintext
 +-----------------------------------------+
 |            Function                     |
-|     buildBVHNodesParallel               |
+|       buildBVHNodesParallel             |
 |                                         |
 |  Parameters:                            |
 |  - BVHNode* nodes                       |
@@ -1839,8 +1834,8 @@ The function `rayTriangleIntersect` checks if a ray intersects a given triangle 
 
 ```plaintext
 +---------------------------------------------------+
-|            Function                               |
-|     buildBVH_GPU_Parallel_Best_Axis               |
+|               Function                            |
+|        buildBVH_GPU_Parallel_Best_Axis            |
 |                                                   |
 |  Parameters:                                      |
 |  - Triangle* d_triangles                          |
@@ -1872,17 +1867,17 @@ The function `rayTriangleIntersect` checks if a ray intersects a given triangle 
                           |
                           v
 +---------------------------------------------------+
-|        Optimal Axis Selection                     |
+|           Optimal Axis Selection                  |
 |  - Compare extents to determine the axis          |
 |    with the largest range                         |
 +---------------------------------------------------+
                           |
                           v
-+-----------------------------------------------------+
-|        Sorting Triangles by Optimal Axis            |
-|  - Use a bitonic sort algorithm to sort TriangleInfo|
-|    based on the selected axis                       |
-+-----------------------------------------------------+
++------------------------------------------------------+
+|        Sorting Triangles by Optimal Axis             |
+|  - Use a bitonic sort algorithm to sort TriangleInfo |
+|    based on the selected axis                        |
++------------------------------------------------------+
                           |
                           v
 +---------------------------------------------------+
@@ -2097,7 +2092,7 @@ The function `rayTriangleIntersect` checks if a ray intersects a given triangle 
 
 ```plaintext
 +------------------------------------------------------+
-|                Function                              |
+|                   Function                           |
 |            raytraceKernel_Parallel.                  |
 |                                                      |
 |  Parameters:                                         |
@@ -2429,7 +2424,7 @@ The kernel aims to explore the direction of rays to identify triangles that may 
    - Depending on whether an intersection occurred or not, results are stored in `d_HitRays`.
 
 
-code c++
+### code c++
 
     template <typename T, typename U>
     __global__ void rayTracingKernelExploration( lbvh::bvh_device<T, U> bvh_dev, Ray* rays,
