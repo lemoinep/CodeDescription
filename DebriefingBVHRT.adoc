@@ -349,7 +349,6 @@ Here’s a simplified diagram representing the flow of operations within `raytra
         node.firstTriangle = start;
         node.triangleCount = end - start;
         node.bounds = thrust::reduce( thrust::device, aabbs.begin() + start, aabbs.begin() + end, AABB(), MergeAABB() );
-
         if ( node.triangleCount <= 2 )
         {
             // Leaf node
@@ -469,10 +468,8 @@ Here’s a simplified diagram representing the flow of operations within `raytra
                                 int start,
                                 int end )
     {
-
         std::stack<BVHBuildTask> taskStack;
         taskStack.push( BVHBuildTask( nodeIndex, start, end ) );
-
         while ( !taskStack.empty() )
         {
             BVHBuildTask task = taskStack.top();
@@ -528,7 +525,6 @@ Here’s a simplified diagram representing the flow of operations within `raytra
 
                 node.leftChild = ++nodeIndex;
                 node.rightChild = ++nodeIndex;
-
                 taskStack.push( BVHBuildTask( node.rightChild, mid, currentEnd ) );
                 taskStack.push( BVHBuildTask( node.leftChild, currentStart, mid ) );
             }
@@ -746,10 +742,8 @@ Here’s a simplified diagram representing the flow of operations within `raytra
         // Calculate AABBs and centroids for all triangles
         thrust::device_vector<AABB> aabbs( numTriangles );
         thrust::device_vector<float3> centroids( numTriangles );
-
         thrust::transform( thrust::device, triangles.begin(), triangles.end(), aabbs.begin(), CalculateAABB() );
         thrust::transform( thrust::device, triangles.begin(), triangles.end(), centroids.begin(), CalculateCentroid() );
-
         // Build the BVH recursively or iteratively
         int rootNodeIndex = 0;
         buildBVH_AABB_Recursive( triangles, aabbs, centroids, nodes, rootNodeIndex, 0, numTriangles ); // Nota: it is a bit faster than compared to the iterative
@@ -1201,9 +1195,7 @@ This function is responsible for traversing the octree structure to find interse
                 return false;  // No intersection with the root
             }
             stack[stackSize++] = {root, rootTEntry};
-
             bool hit = false;
-
             while (stackSize > 0) {
                 StackEntry current = stack[--stackSize];
                 OctreeNode* currentNode = current.node;
@@ -2196,9 +2188,7 @@ The function `rayTriangleIntersect` checks if a ray intersects a given triangle 
         constexpr int MAX_STACK_SIZE = 64;
         int stack[MAX_STACK_SIZE];
         int stackPtr = 0;
-
         stack[stackPtr++] = 0;
-
         float closestT = INFINITY;
         int closestTriangle = -1;
         int closestIntersectionId = -1;
@@ -2432,10 +2422,7 @@ The kernel aims to explore the direction of rays to identify triangles that may 
     {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
         if ( idx >= numRays ) return;
-
         Ray ray = rays[idx];
-        // d_HitRays[idx] = { -1, INFINITY, make_float3(INFINITY), -1 }; // Initialize results
-
         d_HitRays[idx].hitResults = -1;
         d_HitRays[idx].distanceResults = INFINITY; // distance
         d_HitRays[idx].intersectionPoint = make_float3( INFINITY, INFINITY, INFINITY );
@@ -2469,7 +2456,7 @@ The kernel aims to explore the direction of rays to identify triangles that may 
                 float halfOpeningAngle = calculateHalfOpeningAngle( hitTriangle, ray.origin );
 
                 if ( halfOpeningAngle > 0.2f )
-                { // Close object check /:0.2
+                { 
                     float t;
                     if ( rayTriangleIntersect( ray, hitTriangle, t ) )
                     {
