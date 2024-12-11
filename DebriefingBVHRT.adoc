@@ -95,7 +95,7 @@ This function employs an efficient approach for ray tracing in a three-dimension
 
 ```
 +---------------------+
-|   raytraceKernel2   |
+|   raytraceKernel    |
 +---------------------+
          |
          v
@@ -132,7 +132,7 @@ This function employs an efficient approach for ray tracing in a three-dimension
 
 The raytraceKernel_Parallel function is a HIP kernel designed for ray tracing, which is a rendering technique that simulates the way light interacts with objects in a scene. Below is a structured explanation of its functionality, along with a diagram to visualize the process.
 
-## Overview of raytraceKernel_Parallel
+## Overview of raytraceKernel_Parallel function
 
 This kernel processes multiple rays in parallel to determine their intersections with triangles in a 3D scene represented by a Bounding Volume Hierarchy (BVH). The key steps involved in the execution of this kernel are as follows:
 
@@ -231,7 +231,7 @@ Here’s a simplified diagram representing the flow of operations within `raytra
 
 
 
-### buildBVH_GPU
+### buildBVH_GPU function
 
 ```plaintext
 +-----------------------------------------------------+
@@ -277,7 +277,7 @@ Here’s a simplified diagram representing the flow of operations within `raytra
 
 <<<
 
-### Schema for `buildBVH_AABB_Recursive`
+### **Function Description: buildBVH_AABB_Recursive**
 
 ```plaintext
 +------------------------------------------------------+
@@ -393,7 +393,7 @@ Here’s a simplified diagram representing the flow of operations within `raytra
 
 <<<
 
-### Schema for `buildBVH_AABB_Iterative`
+### **Function Description: buildBVH_AABB_Iterative**
 
 ```plaintext
 +------------------------------------------------------+
@@ -537,7 +537,7 @@ Here’s a simplified diagram representing the flow of operations within `raytra
 
 <<<
 
-### Schema for `rayTracingKernel`
+### **Function Description: rayTracingKernel**
 
 ```plaintext
 +--------------------------------------------------------+
@@ -698,7 +698,7 @@ Here’s a simplified diagram representing the flow of operations within `raytra
     }
 
 
-### buildBVH_AABB
+### buildBVH_AABB function
 
 ```plaintext
 +-----------------------------------------------------+
@@ -758,7 +758,7 @@ Here’s a simplified diagram representing the flow of operations within `raytra
 
 <<<
 
-### buildBVH_AABB_Recursive
+### **Function Description: buildBVH_AABB_Recursive**
 
 ```plaintext
 +------------------------------------------------------+
@@ -872,7 +872,7 @@ Here’s a simplified diagram representing the flow of operations within `raytra
 
 <<<
 
-### rayTracingImgKernel_AABB
+### **Function Description: rayTracingImgKernel_AABB**
 
 ```plaintext
 +--------------------------------------------------------+
@@ -1124,7 +1124,7 @@ Here's an organizational chart illustrating the relationship between `raytraceKe
 
 <<<
 
-### Schematic Diagram of `traverseOctreeIterative()`
+### **Function Description: traverseOctreeIterative()**
 
 This function is responsible for traversing the octree structure to find intersections between rays and triangles. This function efficiently traverses an octree structure to find intersections between rays and triangles by utilizing a stack-based approach. It leverages helper functions like `rayAABBIntersection` and `rayTriangleIntersection` to perform intersection tests at both node and triangle levels. Here’s a simplified representation of its workflow:
 
@@ -1273,7 +1273,7 @@ This function is responsible for traversing the octree structure to find interse
 
 <<<
 
-### rayAABBIntersection()
+### **Function Description: rayAABBIntersection()**
 
 This function efficiently determines whether a ray intersects with an axis-aligned bounding box using a systematic approach based on geometric principles. The schematic diagram provides a clear visualization of its step-by-step logic. It checks for intersections between a ray and an AABB. Below is a simplified representation of its workflow:
 
@@ -1341,7 +1341,7 @@ This function efficiently determines whether a ray intersects with an axis-align
         }
 
 <<<
-### rayTriangleIntersection()
+### **Function Description: rayTriangleIntersection()**
 
 This function follows a series of steps to check for intersections between a ray and a triangle in 3D space.
 This function efficiently determines whether a ray intersects with a triangle using geometric principles based on the Möller–Trumbore algorithm. The schematic diagram provides a clear visualization of its step-by-step logic.
@@ -1413,7 +1413,7 @@ Here’s a simplified representation of its workflow:
 
 <<<
 
-### Schematic Diagram of `raytraceKernel()`
+### **Function Description: raytraceKernel()**
 
 The `raytraceKernel()` function is designed to handle multiple rays and determine their intersections with an octree of triangles.
 
@@ -1517,7 +1517,7 @@ The `bitonicSort` function implements a bitonic sort algorithm to arrange triang
 
 # *BVH & Ray Tracing with AMD Hip*
 
-## **Function Description: rayTriangleIntersect**
+### **Function Description: rayTriangleIntersect**
 
 ### **Objective**
 The function `rayTriangleIntersect` checks if a ray intersects a given triangle and calculates the intersection point if it exists. It uses the Möller–Trumbore algorithm, which is efficient for intersection tests between rays and triangles. The function uses the Möller–Trumbore algorithm to determine if a ray intersects a triangle in 3D space. It performs geometric calculations to establish barycentric coordinates and verify intersection conditions. If an intersection is found, it calculates and returns both the intersection point and its distance from the ray's origin.
@@ -1695,7 +1695,7 @@ The function `rayTriangleIntersect` checks if a ray intersects a given triangle 
 
 <<<
 
-## **Function Description: buildBVHNodesParallel**
+### **Function Description: buildBVHNodesParallel**
 
 ```plaintext
 +-----------------------------------------+
@@ -1830,7 +1830,7 @@ The function `rayTriangleIntersect` checks if a ray intersects a given triangle 
 <<<
 
 
-## **Function Description: buildBVH_GPU_Parallel_Best_Axis**
+### **Function Description: buildBVH_GPU_Parallel_Best_Axis**
 
 ```plaintext
 +---------------------------------------------------+
@@ -1844,11 +1844,11 @@ The function `rayTriangleIntersect` checks if a ray intersects a given triangle 
 +---------------------------------------------------+
                           |
                           v
-+----------------------------------------------------+
-|        Variable Initialization                     |
-|  - Calculate the total number of nodes (totalNodes)|
-|  - Allocate memory for TriangleInfo and extents    |
-+----------------------------------------------------+
++-----------------------------------------------------+
+|        Variable Initialization                      |
+|  - Calculate the total number of nodes (totalNodes) |
+|  - Allocate memory for TriangleInfo and extents     |
++-----------------------------------------------------+
                           |
                           v
 +---------------------------------------------------+
@@ -2088,7 +2088,7 @@ The function `rayTriangleIntersect` checks if a ray intersects a given triangle 
     hipFree(d_maxExtents);
     }
 
-## **Function Description: raytraceKernel_Parallel**
+### **Function Description: raytraceKernel_Parallel**
 
 ```plaintext
 +------------------------------------------------------+
@@ -2301,7 +2301,7 @@ The use of `lbvh::query_device` to find the nearest object offers several signif
 # *LBVH & Ray Tracing with AMD Hip*
 
 
-## **Function Description: rayTracingKernelExploration**
+### **Function Description: rayTracingKernelExploration**
 
 ### **Objective**
 The kernel aims to explore the direction of rays to identify triangles that may be intersected. It uses an iteration mechanism to adjust the ray's position based on distances and angles relative to the detected triangles.
