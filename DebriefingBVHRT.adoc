@@ -10,12 +10,15 @@ My exploration has concentrated on various strategies within the domains of BVH 
 
 == Comparative Analysis
 [.text-justify]
-In my investigations, I have compared different implementations and methodologies for BVH construction and traversal on GPU platforms. Notably, recent advancements have shown that GPU-based ray tracing can achieve performance levels comparable to traditional CPU-based methods while handling dynamic scenes more effectively. For instance:
+In my investigations, I have compared different implementations and methodologies for BVH construction and traversal on GPU platforms. 
+
+Notably, recent advancements have shown that GPU-based ray tracing can achieve performance levels comparable to traditional CPU-based methods while handling dynamic scenes more effectively. For instance:
 
 - **Real-time Performance**: Recent studies indicate that modern GPU ray tracers can render complex scenes at competitive frame rates by leveraging parallel processing capabilities of GPUs [1][3].
 - **Memory Efficiency**: BVHs generally require less memory compared to other acceleration structures like kd-trees, making them particularly suitable for dynamic scenes where object positions frequently change [1][4].
 - **Algorithmic Enhancements**: New algorithms have been proposed that significantly improve BVH construction speed and quality, achieving up to 40 million triangles per second on high-end GPUs [3].
 
+So, it will be necessary to integrate these new techniques into our future development.
 
 == References
 ** [1] https://www.johannes-guenther.net/BVHonGPU/BVHonGPU.pdf
