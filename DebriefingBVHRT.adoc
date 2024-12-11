@@ -17,11 +17,11 @@ In my investigations, I have compared different implementations and methodologie
 - **Algorithmic Enhancements**: New algorithms have been proposed that significantly improve BVH construction speed and quality, achieving up to 40 million triangles per second on high-end GPUs [3].
 
 
-References:
-[1] https://www.johannes-guenther.net/BVHonGPU/BVHonGPU.pdf
-[2] https://cvit.iiit.ac.in/research/projects/cvit-projects/ray-tracing-on-the-gpu
-[3] https://research.nvidia.com/sites/default/files/pubs/2013-07_Fast-Parallel-Construction/karras2013hpg_paper.pdf
-[4] https://kth.diva-portal.org/smash/get/diva2:1886189/FULLTEXT01.pdf
+== References
+** [1] https://www.johannes-guenther.net/BVHonGPU/BVHonGPU.pdf
+** [2] https://cvit.iiit.ac.in/research/projects/cvit-projects/ray-tracing-on-the-gpu
+** [3] https://research.nvidia.com/sites/default/files/pubs/2013-07_Fast-Parallel-Construction/karras2013hpg_paper.pdf
+** [4] https://kth.diva-portal.org/smash/get/diva2:1886189/FULLTEXT01.pdf
 
 
 <<<
