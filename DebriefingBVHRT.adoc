@@ -1,0 +1,2576 @@
+= *Exploratory Research on a BVH Ray Tracing Strategy with GPU*
+
+== Introduction
+[.text-justify]
+Bounding Volume Hierarchy (BVH) is a crucial data structure employed to enhance the efficiency of graphics rendering, particularly in ray tracing applications. By organizing geometric objects into a tree structure, BVH significantly optimizes intersection calculations between rays and objects. This hierarchical approach allows for rapid exclusion of non-visible objects, thereby improving rendering performance. The construction of a BVH involves grouping geometric primitives, such as triangles, into larger bounding volumes. Each node in the hierarchy represents a bounding volume that encapsulates a subset of objects, while the leaves contain the actual primitives. This method effectively reduces the number of intersection tests required during rendering, as many objects can be quickly disregarded if their bounding volumes do not intersect with the ray.
+
+== Research Focus
+[.text-justify]
+My exploration has concentrated on various strategies within the domains of BVH and ray tracing, each presenting unique algorithms and data structures aimed at optimizing performance in graphical applications. A significant part of my research has been dedicated to evaluating the bvh.v2 program, which is integrated into feelpp and demonstrates exceptional efficiency on CPU architectures. This program utilizes multi-threading optimizations to enhance execution speed and minimize memory consumption associated with the BVH structure.
+
+== Comparative Analysis
+[.text-justify]
+In my investigations, I have compared different implementations and methodologies for BVH construction and traversal on GPU platforms. Notably, recent advancements have shown that GPU-based ray tracing can achieve performance levels comparable to traditional CPU-based methods while handling dynamic scenes more effectively. For instance:
+
+- **Real-time Performance**: Recent studies indicate that modern GPU ray tracers can render complex scenes at competitive frame rates by leveraging parallel processing capabilities of GPUs [1][3].
+- **Memory Efficiency**: BVHs generally require less memory compared to other acceleration structures like kd-trees, making them particularly suitable for dynamic scenes where object positions frequently change [1][4].
+- **Algorithmic Enhancements**: New algorithms have been proposed that significantly improve BVH construction speed and quality, achieving up to 40 million triangles per second on high-end GPUs [3].
+
+
+References:
+[1] https://www.johannes-guenther.net/BVHonGPU/BVHonGPU.pdf
+[2] https://cvit.iiit.ac.in/research/projects/cvit-projects/ray-tracing-on-the-gpu
+[3] https://research.nvidia.com/sites/default/files/pubs/2013-07_Fast-Parallel-Construction/karras2013hpg_paper.pdf
+[4] https://kth.diva-portal.org/smash/get/diva2:1886189/FULLTEXT01.pdf
+
+
+<<<
+
+== *Implementation of BVH with rocTHRUST for Ray Tracing*
+
+[.text-justify]
+In my initial implementations, I focused on leveraging the Bounding Volume Hierarchy (BVH) in conjunction with rocTHRUST, a GPU-accelerated library for parallel algorithms. This approach incorporates fundamental structures such as **Vec3**, **F3Triangle**, **Triangle**, **Box**, and **BVHNode**, each playing a vital role in managing geometric operations, particularly the intersection tests between rays and triangles.
+The *geometric structures* are essential for efficient ray-triangle intersection calculations, which are executed using the Möller–Trumbore algorithm. This algorithm is well-suited for determining whether a ray intersects with a triangle, making it a cornerstone of ray tracing applications.
+
+[.text-justify]
+The exploration of BVH with rocTHRUST highlights its potential in optimizing ray tracing performance on GPUs. By utilizing advanced geometric structures and parallel processing techniques, this implementation not only enhances intersection management but also leverages the full capabilities of modern GPU hardware. As research continues in this field, further refinements in BVH construction and traversal algorithms will be essential for achieving real-time rendering in increasingly complex visual environments.
+
+[.text-justify]
+An alternative strategy for implementing the Bounding Volume Hierarchy (BVH) utilizes Axis-Aligned Bounding Boxes (AABBs). This approach is centered around the **BVHBuildTask** structure, which streamlines the process of constructing nodes within the BVH tree. The function **buildBVH_AABB_Iterative** employs an iterative method to mitigate potential issues associated with recursion depth, enhancing stability 
+and performance.
+
+[.text-justify]
+AABBs are defined by two corner points: the minimum and maximum bounds, which delineate the box's extents. This structure allows for efficient intersection tests due to its axis-aligned properties, making it a common choice in ray tracing applications. The intersection between a ray and an AABB can be computed using a series of one-dimensional tests against the bounding planes of the box, significantly speeding up the intersection process compared to more complex geometries.
+
+[.text-justify]
+The kernel **rayTracingImgKernel_AABB** optimizes ray processing by stacking the children of internal nodes. This method enhances traversal efficiency by ensuring that ray intersection tests are conducted in a manner that minimizes unnecessary calculations. By leveraging the hierarchical nature of AABBs, this optimization allows for rapid exclusion of non-intersecting nodes.
+
+### Heuristics in BVH Construction
+
+[.text-justify]
+The importance of heuristics, particularly the Surface Area Heuristic (SAH), is crucial in minimizing overall costs during ray tracing. The SAH provides a well-grounded cost model for determining optimal partitions of primitives within the BVH. It aims to minimize the probability of intersection for nodes that contain many primitives, thereby reducing computational overhead during rendering.
+
+- **Surface Area Heuristic (SAH)**: This heuristic evaluates potential splits based on their surface area, allowing for more effective partitioning of scene geometry. The underlying principle is that nodes with smaller surface areas are less likely to be intersected by rays, leading to improved performance in ray tracing applications [1][2].
+
+### Performance Implications
+[.text-justify]
+Implementing AABBs within a BVH framework has demonstrated significant performance improvements in ray tracing scenarios. The efficiency of AABBs allows for rapid culling of non-relevant geometry, which is particularly beneficial when dealing with complex scenes containing numerous primitives. Additionally, iterative construction methods help maintain performance consistency by avoiding deep recursive calls that could lead to stack overflow issues.
+
+
+### Implementation 
+## Conceptual Diagram of the raytraceKernel2 Function
+
+This function employs an efficient approach for ray tracing in a three-dimensional space using a BVH structure. By utilizing a stack to manage node exploration, it minimizes memory usage and enhances the efficiency of intersection calculations. This conceptual diagram clearly illustrates how each step contributes to the overall ray tracing process.
+
+### 1. **Function Inputs**
+- **Ray* rays**: Array of rays to be traced.
+- **int numRays**: Total number of rays.
+- **BVHNode* bvhNodes**: Array of BVH nodes.
+- **Triangle* triangles**: Array of triangles.
+- **int* hitTriangles**: Array to store indices of hit triangles.
+- **float* distance**: Array to store intersection distances.
+- **Vec3* intersectionPoint**: Array to store intersection points.
+- **int* hitId**: Array to store identifiers of hit triangles.
+
+### 2. **Initialization**
+- Each thread is associated with a specific ray (indexed by `idx`).
+- Initialization of variables to track the closest triangle and intersection point.
+
+### 3. **Main Loop**
+#### a. **Intersection with BVH Nodes**
+- Check if the ray intersects the bounding volume (AABB) of the current node.
+
+#### b. **Intersection with Triangles**
+- If the node contains triangles:
+  - For each triangle, check if the ray intersects this triangle.
+  - If an intersection is found and its distance is shorter than previously recorded, update intersection information.
+
+#### c. **Exploration of Children**
+- If the node has children and there is space in the stack, push the children onto the stack for further exploration.
+
+### 4. **Storing Results**
+- At the end of execution, store results in the appropriate arrays (`hitTriangles`, `distance`, `intersectionPoint`, `hitId`).
+
+## Visualization of the Process
+
+```
++---------------------+
+|   raytraceKernel2   |
++---------------------+
+         |
+         v
++---------------------+
+|   Initialization    |
++---------------------+
+         |
+         v
++---------------------+
+|   Main Loop         |
+|                     |
+|  +---------------+  |
+|  | Intersection  |  |
+|  |   AABB       |   |
+|  +---------------+  |
+|         |           |
+|         v           |
+|  +---------------+  |
+|  | Intersection  |  |
+|  |   Triangles   |  |
+|  +---------------+  |
+|         |           |
+|         v           |
+|  +---------------+  |
+|  | Explore Child |<--+
+|  +---------------+   |
++---------------------+
+         |
+         v
++---------------------+
+|   Storing Results    |
++---------------------+
+```
+
+The raytraceKernel_Parallel function is a HIP kernel designed for ray tracing, which is a rendering technique that simulates the way light interacts with objects in a scene. Below is a structured explanation of its functionality, along with a diagram to visualize the process.
+
+## Overview of raytraceKernel_Parallel
+
+This kernel processes multiple rays in parallel to determine their intersections with triangles in a 3D scene represented by a Bounding Volume Hierarchy (BVH). The key steps involved in the execution of this kernel are as follows:
+
+1. **Initialization**:
+   - Each thread computes its unique index (`idx`) based on the block and thread identifiers.
+   - If `idx` exceeds the number of rays or if there are no nodes or triangles, the thread exits early.
+
+2. **Ray Processing**:
+   - The ray corresponding to the current thread is fetched from the input array.
+   - A stack is initialized to manage BVH traversal, starting with the root node.
+
+3. **BVH Traversal**:
+   - The kernel iteratively traverses the BVH using a stack to keep track of nodes to visit.
+   - For each node, it checks if the ray intersects with the node's bounding box (though this part is commented out in the code).
+   - If the node contains exactly one triangle, it checks for an intersection between the ray and that triangle.
+
+4. **Intersection Calculation**:
+   - If an intersection occurs and it is closer than previous intersections, it updates the closest intersection details (triangle index, distance, and intersection point).
+
+5. **Output Results**:
+   - After processing all nodes, the results (closest triangle index, distance, intersection point, and hit ID) are stored in output arrays.
+
+## Diagram of Functionality
+
+Here’s a simplified diagram representing the flow of operations within `raytraceKernel_Parallel`:
+
+```
++---------------------+
+| Start Kernel        |
++---------------------+
+          |
+          v
++---------------------+
+| Calculate idx       |
++---------------------+
+          |
+          v
++---------------------+
+| Check Validity      |
+| (idx < numRays)     |
++---------------------+
+          |
+          v
++---------------------+
+| Initialize Ray      |
+| & Stack             |
++---------------------+
+          |
+          v
++----------------------+
+| While Stack Not Empty|
++----------------------+
+          |
+          v
++---------------------+
+| Pop Node from Stack  |
++---------------------+
+          |
+          v
++---------------------+
+| Check Intersection  |
+| with BVH Node       |
++---------------------+
+          |           |
+        Yes           No
+          |           |
+          v           v
++----------------------+  +---------------------+
+| Check Triangle Count |  | Continue Traversal  |
+| & Process Triangle   |  +---------------------+
++----------------------+
+          |
+          v
++---------------------+
+| Update Closest Info |
++---------------------+
+          |
+          v
++---------------------+
+| Store Results       |
++---------------------+
+```
+
+## Key Components
+
+- **Inputs**:
+  - `Ray *rays`: Array of rays to be processed.
+  - `BVHNode *bvhNodes`: Array representing the BVH structure.
+  - `Triangle *triangles`: Array of triangles in the scene.
+  
+- **Outputs**:
+  - `int *hitTriangles`: Index of triangles hit by rays.
+  - `float *distance`: Distance to the closest intersection.
+  - `Vec3 *intersectionPoint`: Points where rays intersect triangles.
+  - `int *hitId`: IDs of intersected triangles.
+
+
+
+### buildBVH_GPU
+
+```plaintext
++-----------------------------------------------------+
+|                   buildBVH_GPU.                     |
+|-----------------------------------------------------|
+| 1. Initialize BVH Nodes                             |
+|    - Resize nodes vector to hold BVH nodes          |
+|                                                     |
+| 2. Calculate AABBs and Centroids                    |
+|    - For each triangle in triangles:                |
+|      +--------------------------------------------+ |
+|      |  Call CalculateAABB()                      | |
+|      +--------------------------------------------+ |
+|      |  Call CalculateCentroid()                  | |
+|      +--------------------------------------------+ |
+|                                                     |
+| 3. Build the BVH                                    |
+|    - Call buildBVH_AABB_Recursive() or              |
+|      buildBVH_AABB_Iterative()                      |
++-----------------------------------------------------+
+```
+
+### Explanation of Each Step
+
+1. **Initialize BVH Nodes**:
+   - The function starts by determining the number of triangles and resizing the `nodes` vector to accommodate all necessary BVH nodes (which is typically $$2 \times \text{numTriangles} - 1$$).
+
+2. **Calculate AABBs and Centroids**:
+   - The function calculates the Axis-Aligned Bounding Boxes (AABBs) for each triangle using a functor (`CalculateAABB`).
+   - It also calculates the centroids of each triangle using another functor (`CalculateCentroid`).
+   - This step ensures that each triangle has its bounding box and centroid computed, which are essential for building the BVH.
+
+3. **Build the BVH**:
+   - Finally, the function builds the BVH by either calling a recursive function (`buildBVH_AABB_Recursive`) or an iterative function (`buildBVH_AABB_Iterative`). 
+   - The choice between these two methods can depend on performance considerations or specific requirements of the application.
+
+### Additional Considerations
+
+- **Parallelization**: The calculations of AABBs and centroids are performed in parallel using Thrust, which allows for efficient processing on the GPU.
+- **Node Structure**: Each node in the BVH will contain information about its bounding box, triangle indices, and child node indices.
+- **Performance**: The recursive method may be faster for certain datasets, while the iterative method may be more stable for deeper trees or larger datasets.
+
+
+<<<
+
+### Schema for `buildBVH_AABB_Recursive`
+
+```plaintext
++------------------------------------------------------+
+|                buildBVH_AABB_Recursive               |
+|------------------------------------------------------|
+| 1. Initialize BVH Node                               |
+|    - Set firstTriangle and triangleCount             |
+|    - Calculate AABB for the current node using       |
+|      thrust::reduce with MergeAABB                   |
+|                                                      |
+| 2. Check if Leaf Node                                |
+|    - If triangleCount <= 2:                          |
+|      - Set leftChild and rightChild to -1            |
+|      - Return (this is a leaf node)                  |
+|                                                      |
+| 3. Internal Node Processing                          |
+|    - Determine split axis (e.g., x, y, or z)         |
+|    - Calculate split position based on AABB bounds   |
+|                                                      |
+| 4. Partition Triangles                               |
+|    - Use thrust::partition to split triangles        |
+|      based on their centroids                        |
+|                                                      |
+| 5. Create Child Nodes                                |
+|    - Update leftChild and rightChild indices         |
+|    - Recursively call buildBVH_AABB_Recursive for    |
+|      left and right children                         |
++-----------------------------------------------------+
+```
+
+### Explanation of Each Step
+
+1. **Initialize BVH Node**:
+   - The function starts by initializing the current BVH node. It sets the `firstTriangle` index to indicate where the triangles for this node start and calculates the number of triangles (`triangleCount`) that this node encompasses.
+   - It computes the AABB (Axis-Aligned Bounding Box) for the current set of triangles using `thrust::reduce` with a merging functor (`MergeAABB`).
+
+2. **Check if Leaf Node**:
+   - The function checks if the current node is a leaf node by evaluating if `triangleCount` is less than or equal to 2.
+   - If it is a leaf, it sets both `leftChild` and `rightChild` to -1, indicating that there are no further subdivisions, and then returns.
+
+3. **Internal Node Processing**:
+   - If the node is not a leaf, it determines which axis to split along (commonly x, y, or z).
+   - It calculates the split position based on the minimum and maximum bounds of the AABB.
+
+4. **Partition Triangles**:
+   - The function partitions the triangles into two groups based on their centroids using `thrust::partition`. This step organizes triangles such that those with centroids less than the split position go to one side, while others go to the other side.
+
+5. **Create Child Nodes**:
+   - After partitioning, it updates the indices for `leftChild` and `rightChild`.
+   - Finally, it recursively calls `buildBVH_AABB_Recursive` for both child nodes with updated indices to continue building the BVH structure.
+
+### Additional Considerations
+
+- **Performance**: The recursive method may be faster for certain datasets due to its depth-first nature, but it can be limited by stack depth in AMD.
+- **Dynamic Axis Selection**: While this implementation uses a fixed axis for splitting, consider implementing dynamic axis selection based on which dimension has the largest range of values among triangles.
+
+### code c++
+
+    void buildBVH_AABB_Recursive( thrust::device_vector<F3Triangle>& triangles,
+                                thrust::device_vector<AABB>& aabbs,
+                                thrust::device_vector<float3>& centroids,
+                                thrust::device_vector<BVHNodeAABB>& nodes,
+                                int& nodeIndex,
+                                int start,
+                                int end )
+    {
+        BVHNodeAABB* raw_ptr = thrust::raw_pointer_cast( nodes.data() );
+        BVHNodeAABB& node = raw_ptr[nodeIndex];
+        node.firstTriangle = start;
+        node.triangleCount = end - start;
+        node.bounds = thrust::reduce( thrust::device, aabbs.begin() + start, aabbs.begin() + end, AABB(), MergeAABB() );
+
+        if ( node.triangleCount <= 2 )
+        {
+            // Leaf node
+            node.leftChild = -1;
+            node.rightChild = -1;
+        }
+        else
+        {
+            // Internal node
+            int axis = 0;
+            // float splitPos = (node.bounds.min[axis] + node.bounds.max[axis]) * 0.5f;
+            float splitPos = 0.5f * ( getComponent( node.bounds.min, axis ) + getComponent( node.bounds.max, axis ) );
+
+            // Partition the triangles
+            auto splitIter = thrust::partition( thrust::device,
+                                                thrust::make_zip_iterator( thrust::make_tuple( triangles.begin() + start, aabbs.begin() + start, centroids.begin() + start ) ),
+                                                thrust::make_zip_iterator( thrust::make_tuple( triangles.begin() + end, aabbs.begin() + end, centroids.begin() + end ) ),
+                                                [=] __device__( const thrust::tuple<F3Triangle, AABB, float3>& t )
+                                                {
+                                                    return getComponent( thrust::get<2>( t ), axis ) < splitPos;
+                                                } );
+
+            int mid = start + thrust::distance(
+                                thrust::make_zip_iterator( thrust::make_tuple( triangles.begin() + start, aabbs.begin() + start, centroids.begin() + start ) ),
+                                splitIter );
+
+            // Check if the partition actually divided the triangles
+            if ( mid == start || mid == end )
+            {
+                // If the partition did not divide the triangles, force a division in the middle
+                mid = start + ( end - start ) / 2;
+            }
+
+            // std::cout<<"mid="<<mid<<"\n"; CTRL OK
+
+            // Create the child nodes
+            node.leftChild = ++nodeIndex;
+            buildBVH_AABB_Recursive( triangles, aabbs, centroids, nodes, nodeIndex, start, mid );
+            node.rightChild = ++nodeIndex;
+            buildBVH_AABB_Recursive( triangles, aabbs, centroids, nodes, nodeIndex, mid, end );
+        }
+    }
+
+<<<
+
+### Schema for `buildBVH_AABB_Iterative`
+
+```plaintext
++------------------------------------------------------+
+|                buildBVH_AABB_Iterative               |
+|------------------------------------------------------|
+| 1. Initialize Task Stack                             |
+|    - Create a stack to manage BVH build tasks        |
+|    - Push initial task with nodeIndex, start, end    |
+|                                                      |
+| 2. While Tasks Remain                                |
+|    - Pop task from the stack                         |
+|    - Retrieve current node information               |
+|                                                      |
+| 3. Initialize Current Node                           |
+|    - Set firstTriangle and triangleCount             |
+|    - Calculate AABB for the current node using       |
+|      thrust::reduce with MergeAABB                   |
+|                                                      |
+| 4. Check if Leaf Node                                |
+|    - If triangleCount <= 2:                          |
+|      - Set leftChild and rightChild to -1            |
+|      - Continue to next task                         |
+|                                                      |
+| 5. Internal Node Processing                          |
+|    - Determine split axis (e.g., x, y, or z)         |
+|    - Calculate split position based on AABB bounds   |
+|                                                      |
+| 6. Partition Triangles                               |
+|    - Use thrust::partition to split triangles        |
+|      based on their centroids                        |
+|                                                      |
+| 7. Create Child Nodes                                |
+|    - Update leftChild and rightChild indices         |
+|    - Push new tasks for child nodes onto the stack   |
++-----------------------------------------------------+
+```
+
+### Explanation of Each Step
+
+1. **Initialize Task Stack**:
+   - The function starts by creating a stack to manage tasks for building the BVH iteratively. It pushes the initial task containing the root node index and the range of triangles to be processed.
+
+2. **While Tasks Remain**:
+   - The function enters a loop that continues until there are no more tasks in the stack. This allows for processing multiple nodes without recursion.
+
+3. **Initialize Current Node**:
+   - For each task popped from the stack, it retrieves the current node's information and initializes it by setting `firstTriangle` and `triangleCount`.
+   - It calculates the AABB for the current set of triangles using `thrust::reduce` with a merging functor (`MergeAABB`).
+
+4. **Check if Leaf Node**:
+   - The function checks if the current node is a leaf node by evaluating if `triangleCount` is less than or equal to 2.
+   - If it is a leaf, it sets both `leftChild` and `rightChild` to -1, indicating that there are no further subdivisions, and continues to the next task.
+
+5. **Internal Node Processing**:
+   - If the node is not a leaf, it determines which axis to split along (commonly x, y, or z).
+   - It calculates the split position based on the minimum and maximum bounds of the AABB.
+
+6. **Partition Triangles**:
+   - The function partitions the triangles into two groups based on their centroids using `thrust::partition`. This step organizes triangles such that those with centroids less than the split position go to one side while others go to the other side.
+
+7. **Create Child Nodes**:
+   - After partitioning, it updates the indices for `leftChild` and `rightChild`.
+   - Finally, it pushes new tasks for both child nodes onto the stack to continue building the BVH structure.
+
+
+### Code c++
+
+    void buildBVH_AABB_Iterative( thrust::device_vector<F3Triangle>& triangles,
+                                thrust::device_vector<AABB>& aabbs,
+                                thrust::device_vector<float3>& centroids,
+                                thrust::device_vector<BVHNodeAABB>& nodes,
+                                int& nodeIndex,
+                                int start,
+                                int end )
+    {
+
+        std::stack<BVHBuildTask> taskStack;
+        taskStack.push( BVHBuildTask( nodeIndex, start, end ) );
+
+        while ( !taskStack.empty() )
+        {
+            BVHBuildTask task = taskStack.top();
+            taskStack.pop();
+
+            int currentNodeIndex = task.nodeIndex;
+            int currentStart = task.start;
+            int currentEnd = task.end;
+
+            BVHNodeAABB* raw_ptr = thrust::raw_pointer_cast( nodes.data() );
+            BVHNodeAABB& node = raw_ptr[currentNodeIndex];
+
+            node.firstTriangle = currentStart;
+            node.triangleCount = currentEnd - currentStart;
+
+            // std::cout<<"current nodeIndex="<<currentNodeIndex<<" Start= "<<currentStart<<" End="<<currentEnd <<"\n";
+            // std::cout<<"node.triangleCount="<<node.triangleCount<<"\n";
+            // getchar();
+
+            // Calculates the AABB of the node
+            node.bounds = thrust::reduce( thrust::device, aabbs.begin() + currentStart, aabbs.begin() + currentEnd, AABB(), MergeAABB() );
+
+            if ( node.triangleCount <= 2 )
+            {
+                // Leaf node
+                node.leftChild = -1;
+                node.rightChild = -1;
+            }
+            else
+            {
+                // Internal node
+                int axis = 0; // // separation axis (can be optimized). To be seen later, if ...
+                float splitPos = 0.5f * ( getComponent( node.bounds.min, axis ) + getComponent( node.bounds.max, axis ) );
+                // Partition the triangles
+                auto splitIter = thrust::partition( thrust::device,
+                                                    thrust::make_zip_iterator( thrust::make_tuple( triangles.begin() + currentStart, aabbs.begin() + currentStart, centroids.begin() + currentStart ) ),
+                                                    thrust::make_zip_iterator( thrust::make_tuple( triangles.begin() + currentEnd, aabbs.begin() + currentEnd, centroids.begin() + currentEnd ) ),
+                                                    [=] __device__( const thrust::tuple<F3Triangle, AABB, float3>& t )
+                                                    {
+                                                        return getComponent( thrust::get<2>( t ), axis ) < splitPos;
+                                                    } );
+
+                int mid = currentStart + thrust::distance(
+                                            thrust::make_zip_iterator( thrust::make_tuple( triangles.begin() + currentStart, aabbs.begin() + currentStart, centroids.begin() + currentStart ) ),
+                                            splitIter );
+
+                // Check if the partition actually divided the triangles
+                if ( mid == currentStart || mid == currentEnd )
+                {
+                    // If the partition did not divide the triangles, force a division in the middle
+                    mid = currentStart + ( currentEnd - currentStart ) / 2;
+                }
+
+                // std::cout<<"mid="<<mid<<"\n";
+                node.leftChild = ++nodeIndex;
+                node.rightChild = ++nodeIndex;
+
+                taskStack.push( BVHBuildTask( node.rightChild, mid, currentEnd ) );
+                taskStack.push( BVHBuildTask( node.leftChild, currentStart, mid ) );
+            }
+        }
+    }
+
+<<<
+
+### Schema for `rayTracingKernel`
+
+```plaintext
++--------------------------------------------------------+
+|               rayTracingKernel.                        |
+|--------------------------------------------------------|
+| 1. Calculate Ray Index                                 |
+|    - Determine the index of the ray being processed    |
+|                                                        |
+| 2. Initialize Ray and Stack                            |
+|    - Retrieve the ray from rays array                  |
+|    - Initialize a stack for BVH traversal              |
+|    - Push root node index onto the stack               |
+|                                                        |
+| 3. Initialize Closest Hit Variables                    |
+|    - Set variables to track closest hit                |
+|                                                        |
+| 4. Traverse BVH Using Stack                            |
+|    While stack is not empty:                           |
+|    - Pop node index from stack                         |
+|    - Retrieve BVH node based on node index             |
+|                                                        |
+| 5. AABB Intersection Test                              |
+|    - Check if ray intersects with the AABB of the node |
+|    - If no intersection, continue to next iteration    |
+|                                                        |
+| 6. Check for Leaf Node                                 |
+|    If it's a leaf node:                                |
+|    - Loop through triangles in the node                |
+|      + Call intersectTriangle()                        |
+|      + Update closest hit information if intersection  |
+|                                                        |
+| 7. Internal Node Handling                              |
+|    If it's an internal node:                           |
+|    - Push left and right child indices onto stack      |
++--------------------------------------------------------+
+```
+
+### Explanation of Each Step
+
+1. **Calculate Ray Index**:
+   - The kernel starts by calculating the index of the current ray being processed based on the thread and block indices.
+
+2. **Initialize Ray and Stack**:
+   - It retrieves the ray from the `rays` array using the calculated index.
+   - A stack is initialized to manage traversal through the BVH, starting with the root node.
+
+3. **Initialize Closest Hit Variables**:
+   - Variables are initialized to track the closest intersection found during traversal, including `closestHit`, `closestTriangle`, and `closestIntersectionPoint`.
+
+4. **Traverse BVH Using Stack**:
+   - The kernel enters a loop that continues until there are no more nodes in the stack.
+   - It pops a node index from the stack and retrieves the corresponding BVH node.
+
+5. **AABB Intersection Test**:
+   - The kernel checks if the ray intersects with the AABB of the current BVH node.
+   - If there is no intersection, it continues to the next iteration without further processing.
+
+6. **Check for Leaf Node**:
+   - If the current node is a leaf (indicating it contains triangles), it loops through all triangles associated with that node.
+   - For each triangle, it calls `intersectTriangle()` to check for intersections and updates closest hit information if an intersection occurs.
+
+7. **Internal Node Handling**:
+   - If the current node is not a leaf (an internal node), it pushes both child indices (left and right) onto the stack for further traversal.
+
+### Code C++
+
+    __global__ void rayTracingKernel(
+        BVHNode* nodes,
+        F3Triangle* triangles,
+        F3Ray* rays,
+        int* hitResults,
+        float* distance,
+        float3* intersectionPoint,
+        int* hitId,
+        int numRays )
+
+    {
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        if ( idx >= numRays ) return;
+
+        F3Ray ray = rays[idx];
+        int stack[64];
+        int stackPtr = 0;
+        stack[stackPtr++] = 0;
+
+        float closestT = INFINITY;
+        int closestTriangle = -1;
+        int closesIntersectionId = -1;
+        float3 closestIntersectionPoint = make_float3( INFINITY, INFINITY, INFINITY );
+        bool isView = false; // isView=true;
+        const float3 invDir = make_float3( 1.0f / ray.direction.x, 1.0f / ray.direction.y, 1.0f / ray.direction.z );
+
+        while ( stackPtr > 0 )
+        {
+            int nodeIdx = stack[--stackPtr];
+            BVHNode& node = nodes[nodeIdx];
+
+            // Ray-box intersection test
+            float tmin = ( node.min.x - ray.origin.x ) * invDir.x;
+            float tmax = ( node.max.x - ray.origin.x ) * invDir.x;
+            if ( tmin > tmax ) SWAP( float, tmin, tmax );
+
+            float tymin = ( node.min.y - ray.origin.y ) * invDir.y;
+            float tymax = ( node.max.y - ray.origin.y ) * invDir.y;
+            if ( tymin > tymax ) SWAP( float, tymin, tymax );
+
+            if ( ( tmin > tymax ) || ( tymin > tmax ) ) continue;
+
+            if ( tymin > tmin ) tmin = tymin;
+            if ( tymax < tmax ) tmax = tymax;
+
+            float tzmin = ( node.min.z - ray.origin.z ) * invDir.z;
+            float tzmax = ( node.max.z - ray.origin.z ) * invDir.z;
+            if ( tzmin > tzmax ) SWAP( float, tzmin, tzmax );
+
+            if ( ( tmin > tzmax ) || ( tzmin > tmax ) ) continue;
+
+            if ( tzmin > tmin ) tmin = tzmin;
+            if ( tzmax < tmax ) tmax = tzmax;
+
+            if ( tmax < 0 ) continue;
+
+            int numIdNodeTrianggleIndex = node.triangleIndex;
+
+            if ( node.triangleIndex != -1 )
+            {
+                // Sheet: test the intersection with the triangle
+                float t;
+                float3 intersectionPointT;
+                if ( rayTriangleIntersect( ray, triangles[node.triangleIndex], t, intersectionPointT ) )
+                {
+
+                    // To view all intersections
+                    if ( isView ) printf( "      Node Idx [%i] Num Ray[%i] <%f %f %f>\n", nodeIdx, idx, intersectionPointT.x, intersectionPointT.y, intersectionPointT.z );
+
+                    if ( t < closestT )
+                    {
+                        closestT = t;
+                        closestTriangle = node.triangleIndex;
+                        closestIntersectionPoint = intersectionPointT;
+                        closesIntersectionId = triangles[numIdNodeTrianggleIndex].id;
+                        // printf("      NodeTriangleIndex=%i %i\n",numIdNodeTrianggleIndex,triangles[numIdNodeTrianggleIndex].id);
+                    }
+                }
+            }
+            else
+            {
+                // Internal node: add children to the stack
+                stack[stackPtr++] = node.leftChild;
+                stack[stackPtr++] = node.rightChild;
+            }
+        }
+
+        hitResults[idx] = closestTriangle;
+        distance[idx] = closestT;
+        intersectionPoint[idx] = closestIntersectionPoint;
+        hitId[idx] = closesIntersectionId;
+    }
+
+
+### buildBVH_AABB
+
+```plaintext
++-----------------------------------------------------+
+|                  buildBVH_AABB                      |
+|-----------------------------------------------------|
+| 1. Initialize BVH Nodes                             |
+|    - Get number of triangles                        |
+|    - Resize nodes vector to hold BVH nodes          |
+|                                                     |
+| 2. Calculate AABBs for All Triangles                |
+|    - Create device_vector for AABBs                 |
+|    - Create device_vector for centroids             |
+|    - Use thrust::transform to calculate AABBs       |
+|      + Call CalculateAABB()                         |
+|    - Use thrust::transform to calculate centroids   |
+|      + Call CalculateCentroid()                     |
+|                                                     |
+| 3. Build the BVH                                    |
+|    - Call buildBVH_AABB_Recursive() or              |
+|      buildBVH_AABB_Iterative()                      |
++-----------------------------------------------------+
+```
+
+### Explanation of Each Step
+
+1. **Initialize BVH Nodes**:
+   - The function begins by retrieving the number of triangles in the input and resizing the `nodes` vector to accommodate all necessary BVH nodes, which is typically $$2 \times \text{numTriangles} - 1$$.
+
+2. **Calculate AABBs for All Triangles**:
+   - It creates two device vectors: one for storing AABBs and another for centroids of the triangles.
+   - The function uses Thrust's `transform` algorithm to compute the AABBs for each triangle by applying the `CalculateAABB` functor.
+   - It also computes centroids for each triangle using the `CalculateCentroid` functor.
+
+3. **Build the BVH**:
+   - Finally, the function initiates the construction of the BVH by calling either `buildBVH_AABB_Recursive()` or `buildBVH_AABB_Iterative()`, depending on which method is preferred or faster based on previous performance considerations.
+
+
+
+### code c++
+
+    void buildBVH_AABB( thrust::device_vector<F3Triangle>& triangles, thrust::device_vector<BVHNodeAABB>& nodes )
+    {
+        int numTriangles = triangles.size();
+        nodes.resize( 2 * numTriangles - 1 );
+        // Calculate AABBs and centroids for all triangles
+        thrust::device_vector<AABB> aabbs( numTriangles );
+        thrust::device_vector<float3> centroids( numTriangles );
+
+        thrust::transform( thrust::device, triangles.begin(), triangles.end(), aabbs.begin(), CalculateAABB() );
+        thrust::transform( thrust::device, triangles.begin(), triangles.end(), centroids.begin(), CalculateCentroid() );
+
+        // Build the BVH recursively or iteratively
+        int rootNodeIndex = 0;
+        buildBVH_AABB_Recursive( triangles, aabbs, centroids, nodes, rootNodeIndex, 0, numTriangles ); // Nota: it is a bit faster than compared to the iterative
+        // buildBVH_AABB_Iterative(triangles, aabbs, centroids, nodes, rootNodeIndex, 0, numTriangles);
+    }
+
+<<<
+
+### buildBVH_AABB_Recursive
+
+```plaintext
++------------------------------------------------------+
+|                buildBVH_AABB_Recursive               |
+|------------------------------------------------------|
+| 1. Initialize Current Node                           |
+|    - Set firstTriangle and triangleCount             |
+|    - Calculate AABB for the current node using       |
+|      thrust::reduce with MergeAABB                   |
+|                                                      |
+| 2. Check if Leaf Node                                |
+|    - If triangleCount <= 2:                          |
+|      - Set leftChild and rightChild to -1            |
+|      - Return (this is a leaf node)                  |
+|                                                      |
+| 3. Internal Node Processing                          |
+|    - Determine split axis (e.g., x, y, or z)         |
+|    - Calculate split position based on AABB bounds   |
+|                                                      |
+| 4. Partition Triangles                               |
+|    - Use thrust::partition to split triangles        |
+|      based on their centroids                        |
+|                                                      |
+| 5. Create Child Nodes                                |
+|    - Update leftChild and rightChild indices         |
+|    - Recursively call buildBVH_AABB_Recursive for    |
+|      left and right children                         |
++------------------------------------------------------+
+```
+
+### Explanation of Each Step
+
+1. **Initialize Current Node**:
+   - The function starts by initializing the current BVH node. It sets the `firstTriangle` index to indicate where the triangles for this node start and calculates the number of triangles (`triangleCount`) that this node encompasses.
+   - It computes the AABB (Axis-Aligned Bounding Box) for the current set of triangles using `thrust::reduce` with a merging functor (`MergeAABB`).
+
+2. **Check if Leaf Node**:
+   - The function checks if the current node is a leaf node by evaluating if `triangleCount` is less than or equal to 2.
+   - If it is a leaf, it sets both `leftChild` and `rightChild` to -1, indicating that there are no further subdivisions, and then returns.
+
+3. **Internal Node Processing**:
+   - If the node is not a leaf, it determines which axis to split along (commonly x, y, or z).
+   - It calculates the split position based on the minimum and maximum bounds of the AABB.
+
+4. **Partition Triangles**:
+   - The function partitions the triangles into two groups based on their centroids using `thrust::partition`. This step organizes triangles such that those with centroids less than the split position go to one side while others go to the other side.
+
+5. **Create Child Nodes**:
+   - After partitioning, it updates the indices for `leftChild` and `rightChild`.
+   - Finally, it recursively calls `buildBVH_AABB_Recursive` for both child nodes with updated indices to continue building the BVH structure.
+
+### code c++
+
+    // Recursive function to build the BVH
+    void buildBVH_AABB_Recursive( thrust::device_vector<F3Triangle>& triangles,
+                                thrust::device_vector<AABB>& aabbs,
+                                thrust::device_vector<float3>& centroids,
+                                thrust::device_vector<BVHNodeAABB>& nodes,
+                                int& nodeIndex,
+                                int start,
+                                int end )
+    {
+        BVHNodeAABB* raw_ptr = thrust::raw_pointer_cast( nodes.data() );
+        BVHNodeAABB& node = raw_ptr[nodeIndex];
+        node.firstTriangle = start;
+        node.triangleCount = end - start;
+        node.bounds = thrust::reduce( thrust::device, aabbs.begin() + start, aabbs.begin() + end, AABB(), MergeAABB() );
+
+        if ( node.triangleCount <= 2 )
+        {
+            // Leaf node
+            node.leftChild = -1;
+            node.rightChild = -1;
+        }
+        else
+        {
+            // Internal node
+            int axis = 0;
+            // float splitPos = (node.bounds.min[axis] + node.bounds.max[axis]) * 0.5f;
+            float splitPos = 0.5f * ( getComponent( node.bounds.min, axis ) + getComponent( node.bounds.max, axis ) );
+
+            // Partition the triangles
+            auto splitIter = thrust::partition( thrust::device,
+                                                thrust::make_zip_iterator( thrust::make_tuple( triangles.begin() + start, aabbs.begin() + start, centroids.begin() + start ) ),
+                                                thrust::make_zip_iterator( thrust::make_tuple( triangles.begin() + end, aabbs.begin() + end, centroids.begin() + end ) ),
+                                                [=] __device__( const thrust::tuple<F3Triangle, AABB, float3>& t )
+                                                {
+                                                    return getComponent( thrust::get<2>( t ), axis ) < splitPos;
+                                                } );
+
+            int mid = start + thrust::distance(
+                                thrust::make_zip_iterator( thrust::make_tuple( triangles.begin() + start, aabbs.begin() + start, centroids.begin() + start ) ),
+                                splitIter );
+
+            // Check if the partition actually divided the triangles
+            if ( mid == start || mid == end )
+            {
+                // If the partition did not divide the triangles, force a division in the middle
+                mid = start + ( end - start ) / 2;
+            }
+
+            // std::cout<<"mid="<<mid<<"\n"; CTRL OK
+
+            // Create the child nodes
+            node.leftChild = ++nodeIndex;
+            buildBVH_AABB_Recursive( triangles, aabbs, centroids, nodes, nodeIndex, start, mid );
+            node.rightChild = ++nodeIndex;
+            buildBVH_AABB_Recursive( triangles, aabbs, centroids, nodes, nodeIndex, mid, end );
+        }
+    }
+
+
+
+<<<
+
+### rayTracingImgKernel_AABB
+
+```plaintext
++--------------------------------------------------------+
+|               rayTracingImgKernel_AABB                 |
+|--------------------------------------------------------|
+| 1. Calculate Ray Index                                 |
+|    - Determine the index of the current ray            |
+|                                                        |
+| 2. Initialize Ray and Stack                            |
+|    - Retrieve the ray from rays array                  |
+|    - Initialize a stack for BVH traversal              |
+|    - Push root node index onto the stack               |
+|                                                        |
+| 3. Initialize Closest Hit Variables                    |
+|    - Set variables to track closest hit                |
+|                                                        |
+| 4. Traverse BVH Using Stack                            |
+|    While stack is not empty:                           |
+|    - Pop node index from stack                         |
+|    - Retrieve BVH node based on node index             |
+|                                                        |
+| 5. AABB Intersection Test                              |
+|    - Check if ray intersects with the AABB of the node |
+|    - If no intersection, continue to next iteration    |
+|                                                        |
+| 6. Check for Leaf Node                                 |
+|    If it's a leaf node:                                |
+|    - Loop through triangles in the node                |
+|      + Call intersectTriangleVersion2()                |
+|      + Update closest hit information if intersection  |
+|                                                        |
+| 7. Internal Node Handling                              |
+|    If it's an internal node:                           |
+|    - Push left and right child indices onto stack      |
++--------------------------------------------------------+
+```
+
+### Explanation of Each Step
+
+1. **Calculate Ray Index**:
+   - The kernel starts by calculating the index of the current ray being processed based on the thread and block indices.
+
+2. **Initialize Ray and Stack**:
+   - It retrieves the ray from the `rays` array using the calculated index.
+   - A stack is initialized to manage traversal through the BVH, starting with the root node.
+
+3. **Initialize Closest Hit Variables**:
+   - Variables are initialized to track the closest intersection found during traversal, including `closestHit`, `closestTriangle`, and `closestIntersectionPoint`.
+
+4. **Traverse BVH Using Stack**:
+   - The kernel enters a loop that continues until there are no more nodes in the stack.
+   - It pops a node index from the stack and retrieves the corresponding BVH node.
+
+5. **AABB Intersection Test**:
+   - The kernel checks if the ray intersects with the AABB of the current BVH node.
+   - If there is no intersection, it continues to the next iteration without further processing.
+
+6. **Check for Leaf Node**:
+   - If the current node is a leaf (indicating it contains triangles), it loops through all triangles associated with that node.
+   - For each triangle, it calls `intersectTriangleVersion2()` to check for intersections and updates closest hit information if an intersection occurs.
+
+7. **Internal Node Handling**:
+   - If the current node is not a leaf (an internal node), it pushes both child indices (left and right) onto the stack for further traversal.
+
+
+
+### code c++
+
+    __global__ void rayTracingImgKernel_AABB(
+        const BVHNodeAABB* nodes,
+        const F3Triangle* triangles,
+        const F3Ray* rays,
+        int* hitResults,
+        float* hitDistances,
+        float3* intersectionPoint,
+        int* hitId,
+        int numRays )
+
+    {
+        int rayIdx = blockIdx.x * blockDim.x + threadIdx.x;
+        if ( rayIdx >= numRays ) return;
+
+        F3Ray ray = rays[rayIdx];
+        int stack[64];
+        int stackPtr = 0;
+        stack[stackPtr++] = 0;
+
+        // float closestHit = ray.tMax;
+        float closestHit = INFINITY;
+        int closestTriangle = -1;
+        int closesIntersectionId = -1;
+        float3 closestIntersectionPoint = make_float3( INFINITY, INFINITY, INFINITY );
+        bool isView = false; // isView=true;
+
+        while ( stackPtr > 0 )
+        {
+            int nodeIdx = stack[--stackPtr];
+            const BVHNodeAABB& node = nodes[nodeIdx];
+
+            if ( intersectAABB( ray, node.bounds ) )
+            {
+                // printf("nodeIdx=%i\n",nodeIdx);
+                if ( node.leftChild == -1 && node.rightChild == -1 )
+                {
+                    // Leaf node
+                    for ( int i = 0; i < node.triangleCount; ++i )
+                    {
+                        const F3Triangle& tri = triangles[node.firstTriangle + i];
+                        float t;
+                        float3 intersectionPointT;
+
+                        if ( intersectTriangleVersion2( ray, tri, t, intersectionPointT ) )
+                        {
+                            if ( isView ) printf( "[%i] %f \n", rayIdx, t );
+                            if ( t < closestHit )
+                            {
+                                closestHit = t;
+                                closestTriangle = node.firstTriangle + i;
+                                closestIntersectionPoint = intersectionPointT;
+                                closesIntersectionId = triangles[closestTriangle].id;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    if ( node.rightChild != -1 ) stack[stackPtr++] = node.rightChild;
+                    if ( node.leftChild != -1 ) stack[stackPtr++] = node.leftChild;
+                }
+            }
+        }
+
+        hitResults[rayIdx] = closestTriangle;
+        hitDistances[rayIdx] = fabs( closestHit );
+        intersectionPoint[rayIdx] = closestIntersectionPoint;
+        hitId[rayIdx] = closesIntersectionId;
+    }
+
+
+
+<<<
+
+== Octree Implementation for Ray Tracing
+
+### Introduction
+[.text-justify]
+The implementation of an octree for ray tracing presents a distinct approach characterized by key classes such as **OctreeTriangle**, **OctreeRay**, and **HitOctreeRay**. These classes facilitate the necessary calculations for ray-object intersections, which are critical in rendering complex 3D scenes.
+
+### Octree Construction
+[.text-justify]
+The octree is constructed using the function **buildOctreeByLevel**, which organizes the scene's geometry into a hierarchical structure. This function ensures that the octree is built efficiently, allowing for rapid traversal and intersection testing. To avoid issues related to stack depth—a significant concern in GPU environments—iterative traversal methods are employed. This iterative approach enhances stability and performance during ray tracing operations.
+
+### Parallel Processing with AMD Kernels
+[.text-justify]
+The use of AMD kernels takes full advantage of GPU parallelism, enabling the simultaneous processing of multiple rays. This capability significantly improves tracing efficiency, particularly in complex scenes where numerous rays must be evaluated against a large number of objects. By leveraging the parallel nature of GPUs, this method can achieve substantial performance gains, making it well-suited for real-time 3D graphics applications.
+
+### Intersection Calculations
+[.text-justify]
+Intersection calculations between rays and octree nodes are performed using efficient algorithms that take advantage of the octree's spatial organization. The traversal process involves determining which child nodes of the octree are intersected by a given ray, allowing for quick culling of non-relevant geometry. This method reduces the computational burden associated with ray-object intersection tests, leading to faster rendering times.
+
+### Performance Benefits
+
+The octree structure offers several performance benefits over traditional methods:
+
+- **Spatial Partitioning**: By subdividing space hierarchically, octrees allow for more efficient searching and intersection testing compared to linear approaches.
+- **Reduced Computational Overhead**: The ability to quickly eliminate non-intersecting nodes minimizes the number of intersection tests required, enhancing overall rendering performance.
+- **Scalability**: As scene complexity increases, the octree's structure can adapt, maintaining efficiency even with high triangle counts and intricate geometries.
+
+
+### Implementation
+
+### Schematic Diagram of raytraceKernel
+
+The `raytraceKernel` function is designed to perform ray tracing using an octree data structure. This function serves as an entry point for performing ray tracing on an octree structure by launching multiple threads on the GPU, each handling a different ray. The organizational chart illustrates how it interacts with other functions to efficiently compute intersections in parallel.
+
+Below is a simplified schematic representation of its workflow:
+
+```
++-------------------------------------------------+
+|                raytraceKernel                   |
+|-------------------------------------------------|
+| 1. Calculate thread index (idx)                 |
+| 2. Check if idx < numRays                       |
+|    ├─> If not, return (out of bounds)           |
+| 3. Initialize HitOctreeRay structure            |
+| 4. Call traverseOctreeIterative:                |
+|    ├─> Pass d_octree, d_rays[idx],              |
+|        tMin, hitTriangle, d_HitRays[idx]        |
+| 5. Update d_HitRays with results                |
++-------------------------------------------------+
+```
+
+### Organizational Chart (Flowchart) of Functions
+
+Here's an organizational chart illustrating the relationship between `raytraceKernel` and other functions it calls:
+
+```
++---------------------+
+|   raytraceKernel    |
++---------------------+
+           |
+           v
++-------------------------+
+| traverseOctreeIterative |
++-------------------------+
+           |
+           v
++------------------------+
+|   rayAABBIntersection  | <--- Called multiple times for AABBs
++------------------------+
+           |
+           v
++---------------------------+
+|   rayTriangleIntersection | <--- Called for each triangle in leaf nodes
++---------------------------+
+```
+
+### Explanation of Key Components
+
+1. **raytraceKernel**:
+   - This is the main kernel executed on the GPU. Each thread corresponds to a single ray and performs intersection tests with the octree structure.
+   - It initializes the hit results for each ray and calls `traverseOctreeIterative` to find intersections.
+
+2. **traverseOctreeIterative**:
+   - This function traverses the octree recursively or iteratively, checking for intersections between the rays and triangles stored in the octree nodes.
+   - It utilizes helper functions like `rayAABBIntersection` to check if rays intersect with bounding boxes and `rayTriangleIntersection` to check for intersections with triangles.
+
+3. **rayAABBIntersection**:
+   - Checks if a given ray intersects with an axis-aligned bounding box (AABB).
+   - This function is called multiple times during the traversal of the octree.
+
+4. **rayTriangleIntersection**:
+   - Determines if a ray intersects with a specific triangle using geometric algorithms.
+   - This function is called when a ray reaches a leaf node containing triangles.
+
+### code c++ 
+        __global__ void raytraceKernel(OctreeNode* d_octree,OctreeRay* d_rays,HitOctreeRay* d_HitRays,int numRays)
+        {
+            int idx = blockIdx.x * blockDim.x + threadIdx.x;
+            if (idx >=numRays) return;
+                d_HitRays[idx].hitResults = -1;
+                d_HitRays[idx].distanceResults = INFINITY; //distance
+                d_HitRays[idx].intersectionPoint=make_float3(INFINITY, INFINITY, INFINITY);
+                d_HitRays[idx].idResults = -1;
+                float tMin = INFINITY;
+                OctreeTriangle hitTriangle;
+                bool hit = traverseOctreeIterative(d_octree,d_rays[idx], tMin, hitTriangle,d_HitRays[idx]);
+        }
+
+<<<
+
+### Schematic Diagram of `traverseOctreeIterative()`
+
+This function is responsible for traversing the octree structure to find intersections between rays and triangles. This function efficiently traverses an octree structure to find intersections between rays and triangles by utilizing a stack-based approach. It leverages helper functions like `rayAABBIntersection` and `rayTriangleIntersection` to perform intersection tests at both node and triangle levels. Here’s a simplified representation of its workflow:
+
+```
++-------------------------------------------------------+
+|               traverseOctreeIterative                 |
+|-------------------------------------------------------|
+| 1. Initialize stack for nodes to visit                |
+| 2. Check intersection with root node's AABB           |
+|    ├─> If no intersection, return false               |
+| 3. Push root node onto stack                          |
+| 4. While stack is not empty:                          |
+|    ├─> Pop node from stack                            |
+|    ├─> If node entry >= tMin, continue (skip)         |
+|    ├─> If node is a leaf:                             |
+|    |   ├─> Loop through triangles                     |
+|    |   |   ├─> Call rayTriangleIntersection           |
+|    |   |   └─> Update hit results if intersected      |
+|    |   └─> End loop                                   |
+|    └─> Else:                                          |
+|        ├─> Loop through children nodes                |
+|        |   ├─> Call rayAABBIntersection               |
+|        |   └─> Push intersecting children onto stack  |
+|        └─> Sort stack by ascending tEntry             |
++-------------------------------------------------------+
+```
+
+### Explanation of Key Components
+
+1. **Initialization**:
+   - The function initializes a stack to keep track of octree nodes that need to be processed.
+
+2. **Root Node Intersection Check**:
+   - It checks if the ray intersects with the bounding box (AABB) of the root node using `rayAABBIntersection`.
+   - If there is no intersection, the function returns early.
+
+3. **Stack Processing Loop**:
+   - The main processing loop continues until there are no more nodes in the stack.
+   - Each iteration pops a node from the stack and checks if it should be processed based on its entry point compared to `tMin`.
+
+4. **Leaf Node Processing**:
+   - If the current node is a leaf, it loops through all triangles stored in that node.
+   - For each triangle, it calls `rayTriangleIntersection` to check for intersections with the ray.
+   - If an intersection occurs, it updates the hit results (distance, triangle ID, intersection point).
+
+5. **Non-Leaf Node Processing**:
+   - If the current node is not a leaf, it iterates through its child nodes.
+   - For each child node, it checks for intersection with the ray's bounding box using `rayAABBIntersection`.
+   - If there is an intersection, it pushes the child node onto the stack for further processing.
+
+6. **Sorting Stack**:
+   - After processing all children, it sorts the stack based on their entry distances (`tEntry`) to ensure that closer nodes are processed first.
+
+
+### code c++
+
+    __device__ bool traverseOctreeIterative(OctreeNode* root, const OctreeRay& ray, float& tMin, OctreeTriangle& hitTriangle,HitOctreeRay& hr) {
+            
+            bool isView=true; isView=false;
+            
+            if (isView) printf("[traverseOctree]\n");
+
+            // Stack to store nodes to visit
+            struct StackEntry {
+                OctreeNode* node;
+                float tEntry;
+            };
+            StackEntry stack[MAX_STACK_SIZE];
+            int stackSize = 0;
+
+
+            float rootTEntry;
+            if (!rayAABBIntersection(ray, root->bbox, rootTEntry)) {
+                return false;  // No intersection with the root
+            }
+            stack[stackSize++] = {root, rootTEntry};
+
+            bool hit = false;
+
+            while (stackSize > 0) {
+                StackEntry current = stack[--stackSize];
+                OctreeNode* currentNode = current.node;
+                float nodeEntry = current.tEntry;
+
+                if (isView) printf("Visiting node: isLeaf = %s, triangleCount = %d\n", currentNode->isLeaf ? "true" : "false", currentNode->triangleCount);
+
+                if (nodeEntry >= tMin) {
+                    continue;  // No need to check this node or its children
+                }
+
+                if (currentNode->isLeaf) {
+                    //printf("isLeaf\n");
+                    for (int i = 0; i < currentNode->triangleCount; ++i) {
+                        if (isView) {
+                            printf("in leaf %i %f\n",currentNode->triangleCount,tMin);
+                            printf("Triangle %d: (%f, %f, %f), (%f, %f, %f), (%f, %f, %f)\n", i,
+                                currentNode->triangles[i].vertices[0].x, currentNode->triangles[i].vertices[0].y, currentNode->triangles[i].vertices[0].z,
+                                currentNode->triangles[i].vertices[1].x, currentNode->triangles[i].vertices[1].y, currentNode->triangles[i].vertices[1].z,
+                                currentNode->triangles[i].vertices[2].x, currentNode->triangles[i].vertices[2].y, currentNode->triangles[i].vertices[2].z);
+                        }
+                        
+
+                        float t;
+                        float3 intersectionPointT;
+                        if (rayTriangleIntersection(ray, currentNode->triangles[i], t,intersectionPointT) ) {
+                            if (t < tMin) {
+                                //isView=true;
+                                tMin = t;
+                                hitTriangle = currentNode->triangles[i];
+                                hit = true;
+                                if (isView) printf("Hit triangle at t = %f\n", t);
+                                hr.hitResults = i;
+                                hr.distanceResults=fabs(t);
+                                hr.intersectionPoint=intersectionPointT;
+                                hr.idResults=int(currentNode->triangles[i].id);
+                            }
+
+                        }
+                    }
+                } else {
+                    for (int i = 0; i < 8; ++i) {
+                        if (currentNode->children[i] != nullptr) {
+                            float childTEntry;
+                            if (rayAABBIntersection(ray, currentNode->children[i]->bbox, childTEntry) &&
+                                childTEntry < tMin) {
+                                stack[stackSize++] = {currentNode->children[i], childTEntry};
+                            }
+                        }
+                    }
+
+                    // Sort the stack by ascending tEntry
+                    for (int i = stackSize - 1; i > 0; --i) {
+                        for (int j = 0; j < i; ++j) {
+                            if (stack[j].tEntry > stack[j+1].tEntry) {
+                                StackEntry temp = stack[j];
+                                stack[j] = stack[j+1];
+                                stack[j+1] = temp;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return hit;
+        }
+
+<<<
+
+### rayAABBIntersection()
+
+This function efficiently determines whether a ray intersects with an axis-aligned bounding box using a systematic approach based on geometric principles. The schematic diagram provides a clear visualization of its step-by-step logic. It checks for intersections between a ray and an AABB. Below is a simplified representation of its workflow:
+
+```
++----------------------------------------------------+
+|              rayAABBIntersection                   |
+|----------------------------------------------------|
+| 1. Compute inverse direction of the ray            |
+|    ├─> invDir = 1 / ray.direction                  |
+| 2. Calculate tMin and tMax for x-axis              |
+|    ├─> t0 = (aabb.min.x - ray.origin.x) * invDir.x |
+|    ├─> t1 = (aabb.max.x - ray.origin.x) * invDir.x |
+|    ├─> tMinX = min(t0, t1)                         |
+|    ├─> tMaxX = max(t0, t1)                         |
+| 3. Calculate tMin and tMax for y-axis              |
+|    ├─> Repeat similar calculations for y-axis      |
+| 4. Calculate tMin and tMax for z-axis              |
+|    ├─> Repeat similar calculations for z-axis      |
+| 5. Determine overall tNear and tFar                |
+|    ├─> tNear = max(tMinX, tMinY, tMinZ)            |
+|    ├─> tFar = min(tMaxX, tMaxY, tMaxZ)             |
+| 6. Check for intersection conditions               |
+|    ├─> If (tNear <= tFar && tFar > 0)              |
+|         └─> Return true (intersection occurs)      |
+|    └─> Else return false (no intersection)         |
++----------------------------------------------------+
+```
+
+### Explanation of Key Steps
+
+1. **Compute Inverse Direction**:
+   - The function starts by calculating the inverse of the ray's direction components. This helps in determining how far along each axis the ray intersects with the AABB.
+
+2. **Calculate Intersection Points**:
+   - For each axis (x, y, z), it calculates potential entry (`t0`) and exit (`t1`) points based on the AABB's minimum and maximum coordinates relative to the ray's origin.
+   - It then determines `tMin` and `tMax` for each axis.
+
+3. **Determine Overall Entry and Exit Points**:
+   - The overall entry point (`tNear`) is calculated as the maximum of all `tMin` values, while the overall exit point (`tFar`) is calculated as the minimum of all `tMax` values.
+
+4. **Check Intersection Conditions**:
+   - Finally, it checks if there is an intersection by verifying if `tNear` is less than or equal to `tFar` and if `tFar` is greater than zero.
+   - If these conditions are met, it indicates that the ray intersects with the AABB; otherwise, it does not.
+
+### code c++
+
+    __device__ bool rayAABBIntersection(const OctreeRay& ray, const OctreeAABB& aabb) {
+            float3 invDir = make_float3(1.0f / ray.direction.x, 1.0f / ray.direction.y, 1.0f / ray.direction.z);
+            float3 tMin = (aabb.min - ray.origin) * invDir;
+            float3 tMax = (aabb.max - ray.origin) * invDir;
+            
+            float3 t1, t2;
+            t1.x = fminf(tMin.x, tMax.x);
+            t1.y = fminf(tMin.y, tMax.y);
+            t1.z = fminf(tMin.z, tMax.z);
+            
+            t2.x = fmaxf(tMin.x, tMax.x);
+            t2.y = fmaxf(tMin.y, tMax.y);
+            t2.z = fmaxf(tMin.z, tMax.z);
+            
+            float tNear = fmaxf(fmaxf(t1.x, t1.y), t1.z);
+            float tFar = fminf(fminf(t2.x, t2.y), t2.z);
+            
+            return tNear <= tFar && tFar > 0;
+        }
+
+<<<
+### rayTriangleIntersection()
+
+This function follows a series of steps to check for intersections between a ray and a triangle in 3D space.
+This function efficiently determines whether a ray intersects with a triangle using geometric principles based on the Möller–Trumbore algorithm. The schematic diagram provides a clear visualization of its step-by-step logic.
+
+Here’s a simplified representation of its workflow:
+
+```
++-----------------------------------------------------------------+
+|                rayTriangleIntersection                          |
+|-----------------------------------------------------------------|
+| 1. Compute edges of the triangle                                |
+|    ├─> edge1 = vertex1 - vertex0                                |
+|    └─> edge2 = vertex2 - vertex0                                |
+| 2. Compute vector h (cross product)                             |
+|    ├─> h = ray.direction × edge2                                |
+| 3. Calculate determinant (a)                                    |
+|    ├─> a = dot(edge1, h)                                        |
+| 4. Check if ray is parallel to triangle                         |
+|    ├─> If (a > -epsilon && a < epsilon)                         |
+|    |   └─> Return false (no intersection)                       |
+| 5. Calculate barycentric coordinates                            |
+|    ├─> f = 1.0 / a                                              |
+|    ├─> s = ray.origin - vertex0                                 |
+|    ├─> u = f * dot(s, h)                                        |
+|    ├─> If (u < 0 || u > 1)                                      |
+|    |   └─> Return false (outside triangle)                      |
+|    └─> q = cross(s, edge1)                                      |
+|    ├─> v = f * dot(ray.direction, q)                            |
+|    ├─> If (v < 0 || u + v > 1)                                  |
+|    |   └─> Return false (outside triangle)                      |
+| 6. Calculate intersection point                                 |
+|    ├─> t = f * dot(edge2, q)                                    |
+|    ├─> If (t > epsilon)                                         |
+|    |   └─> Compute intersection point:                          |
+|    |       intersectionPoint = ray.origin + t * ray.direction   |
+|    |       Return true (intersection occurs)                    |
+|    └─> Return false (line intersection only)                    |
++-----------------------------------------------------------------+
+```
+
+### Explanation of Key Steps
+
+1. **Compute Edges of the Triangle**:
+   - The function starts by calculating two edges of the triangle using its vertices:
+     - `edge1` is computed as `vertex1 - vertex0`.
+     - `edge2` is computed as `vertex2 - vertex0`.
+
+2. **Compute Cross Product**:
+   - It calculates the vector `h`, which is the cross product of the ray's direction and `edge2`. This helps in determining if the ray intersects with the plane formed by the triangle.
+
+3. **Calculate Determinant**:
+   - The determinant `a` is calculated using the dot product of `edge1` and `h`. This value helps determine if the ray is parallel to the triangle.
+
+4. **Check for Parallelism**:
+   - If `a` is close to zero (within a small epsilon), it indicates that the ray is parallel to the triangle, and thus there can be no intersection.
+
+5. **Calculate Barycentric Coordinates**:
+   - The function computes barycentric coordinates (`u` and `v`) to determine if the intersection point lies within the bounds of the triangle.
+   - It checks if these coordinates are within valid ranges; if not, it returns false.
+
+6. **Calculate Intersection Point**:
+   - If valid barycentric coordinates are obtained, it calculates $$ t $$, which represents how far along the ray direction the intersection occurs.
+   - If $$ t $$ is greater than zero, it computes the actual intersection point and returns true, indicating an intersection occurred.
+
+
+
+
+
+
+<<<
+
+### Schematic Diagram of `raytraceKernel()`
+
+The `raytraceKernel()` function is designed to handle multiple rays and determine their intersections with an octree of triangles.
+
+Here’s a simplified representation of its workflow:
+
+```
++----------------------------------------------------------------------+
+|                   raytraceKernel                                     |
+|----------------------------------------------------------------------|
+| 1. Calculate thread index (idx)                                      |
+|    ├─> idx = blockIdx.x * blockDim.x + threadIdx.x                   |
+| 2. Check if idx < numRays                                            |
+|    ├─> If not, return (out of bounds)                                |
+| 3. Initialize HitOctreeRay structure                                 |
+|    ├─> hitResults = -1                                               |
+|    ├─> distanceResults = INFINITY                                    |
+|    ├─> intersectionPoint = (INFINITY, INFINITY, INFINITY)            |
+|    └─> idResults = -1                                                |
+| 4. Set initial tMin to INFINITY                                      |
+| 5. Call traverseOctreeIterative:                                     |
+|    ├─> Pass d_octree, d_rays[idx], tMin, hitTriangle, d_HitRays[idx] |
+| 6. Update d_HitRays with results                                     |
+|    └─> Store intersection results for the current ray                |
++----------------------------------------------------------------------+
+```
+
+### Explanation of Key Steps
+
+1. **Calculate Thread Index**:
+   - Each thread calculates its unique index (`idx`) based on its position in the grid of threads. This index determines which ray this thread will process.
+
+2. **Bounds Checking**:
+   - The function checks if the calculated index exceeds the number of rays (`numRays`). If it does, the thread returns early to avoid out-of-bounds memory access.
+
+3. **Initialization**:
+   - Initializes the `HitOctreeRay` structure for storing results related to ray intersections:
+     - Sets `hitResults` to -1 (indicating no hit).
+     - Sets `distanceResults` to infinity (a placeholder for distance).
+     - Initializes `intersectionPoint` to an invalid point (infinity).
+     - Sets `idResults` to -1 (no triangle ID).
+
+4. **Set Initial Minimum Distance**:
+   - Initializes `tMin` to infinity, which will be updated during intersection tests.
+
+5. **Call to traverseOctreeIterative**:
+   - Calls the `traverseOctreeIterative()` function, passing in:
+     - The octree (`d_octree`) to traverse.
+     - The current ray (`d_rays[idx]`) being processed.
+     - A reference to `tMin` for tracking the closest intersection distance.
+     - A reference to store hit triangle details in `d_HitRays[idx]`.
+
+6. **Update Hit Results**:
+   - After returning from the traversal function, updates the `d_HitRays` array with results from the intersection tests for that specific ray.
+
+
+### Conclusion
+[.text-justify]
+The examination of an octree-based implementation for ray tracing underscores its effectiveness in managing complex 3D scenes. By utilizing key classes for intersection calculations and employing iterative traversal methods, this approach maximizes GPU capabilities while minimizing computational overhead. As advancements in GPU technology continue to evolve, further optimizations in octree traversal and intersection algorithms will be essential for achieving real-time rendering in increasingly sophisticated graphical applications.
+
+
+<<<
+
+== Pure HIP BVH Implementation for Ray Tracing
+[.text-justify]
+The implementation of a pure HIP (Heterogeneous-compute Interface for Portability) Bounding Volume Hierarchy (BVH) incorporates various essential structures and functions that are pivotal for efficient ray tracing. Key structures include **Ray**, **Triangle**, **AABB**, **BVHNode**, and **Intersection**, each designed to encapsulate the necessary information for managing intersection calculations and spatial organization.
+
+### Core Structures and Functions
+
+1. **Core Structures**:
+   - **Ray**: Represents the ray being traced through the scene.
+   - **Triangle**: Defines the geometric primitive used for intersection tests.
+   - **AABB (Axis-Aligned Bounding Box)**: A bounding volume used to efficiently cull non-intersecting objects.
+   - **BVHNode**: Represents a node in the BVH, which can either be a leaf containing triangles or an internal node containing child nodes.
+   - **Intersection**: Encapsulates the results of intersection tests.
+
+2. **Intersection Functions**:
+   - The function `rayTriangleIntersect` calculates intersections between a ray and a triangle using the Möller–Trumbore algorithm, which is efficient for this purpose.
+   - The function `rayAABBIntersect` tests intersections between a ray and an AABB, employing an optimized method that utilizes direction inversion to enhance performance.
+
+### Parallel Processing with Kernels
+[.text-justify]
+The kernel named `raytraceKernel` processes multiple rays in parallel, fully leveraging the computational power of GPUs. Each thread is responsible for managing an individual ray, maximizing the potential for parallel execution. This design allows for significant performance improvements when rendering complex scenes.
+
+### BVH Construction Functions
+
+Several functions are integral to constructing the BVH hierarchy on both CPU and GPU:
+
+- **`buildBVHRecursive`**: Constructs the BVH recursively, dividing triangles into subgroups based on their spatial positions.
+- **`buildBVH_CPU_Recursive`**: A CPU-based version of the recursive construction function.
+- **`initializeLeaves`**: Prepares leaf nodes with corresponding triangles, ensuring that each leaf node accurately represents its contained geometry.
+- **`buildBVH_GPU_Version2`**: A GPU-optimized version of the BVH construction process.
+
+This clear distinction between CPU and GPU logic is essential for maximizing the parallel capabilities of GPUs.
+
+### Sorting Algorithm
+[.text-justify]
+The `bitonicSort` function implements a bitonic sort algorithm to arrange triangles according to their positions along a specified axis. This sorting method is particularly well-suited for parallel architectures due to its efficiency in requiring fewer comparisons, making it an ideal choice for GPU implementations.
+
+
+### Implementation
+
+# *BVH & Ray Tracing with AMD Hip*
+
+## **Function Description: rayTriangleIntersect**
+
+### **Objective**
+The function `rayTriangleIntersect` checks if a ray intersects a given triangle and calculates the intersection point if it exists. It uses the Möller–Trumbore algorithm, which is efficient for intersection tests between rays and triangles. The function uses the Möller–Trumbore algorithm to determine if a ray intersects a triangle in 3D space. It performs geometric calculations to establish barycentric coordinates and verify intersection conditions. If an intersection is found, it calculates and returns both the intersection point and its distance from the ray's origin.
+
+### **Parameters**
+- **Ray& ray**: The ray to test, containing an origin and a direction.
+- **Triangle& tri**: The triangle to test, defined by three vertices.
+- **float& t**: A reference to store the distance from the intersection point to the ray's origin.
+- **Vec3& intersectionPoint**: A reference to store the intersection point.
+
+### **Function Steps**
+
+1. **Calculate Triangle Edges**:
+   - Computes the vectors `edge1` and `edge2` representing the edges of the triangle.
+
+2. **Calculate Vector H**:
+   - Computes the vector `h` by taking the cross product of the ray's direction and `edge2`.
+
+3. **Calculate A**:
+   - Calculates the value `a` by taking the dot product of `edge1` and `h`.
+   - If `a` is close to zero, it indicates that the ray is parallel to the triangle.
+
+4. **Calculate F**:
+   - Computes `f`, which is the inverse of `a`.
+
+5. **Calculate U**:
+   - Calculates vector `s`, which represents the relative position of the ray's origin to one vertex of the triangle.
+   - Computes the barycentric coordinate `u`.
+   - Checks if `u` is within the range [0, 1].
+
+6. **Calculate V**:
+   - Computes vector `q` by taking the cross product of `s` and `edge1`.
+   - Calculates barycentric coordinate `v`.
+   - Checks if `v` is within the range [0, 1] and if `u + v <= 1`.
+
+7. **Calculate T**:
+   - Computes the intersection distance `t`.
+   - Checks if `t` is negative, indicating that the intersection is behind the ray's origin.
+   - Handles cases where `t` is very close to zero or positive.
+
+8. **Calculate Intersection Point**:
+   - If a valid intersection is found, computes the coordinates of the intersection point.
+
+### **Workflow Diagram**
+
+```plaintext
++--------------------------+
+| Start Function           |
+| rayTriangleIntersect     |
++--------------------------+
+            |
+            v
++--------------------------+
+| Calculate edge1 and edge2|
+| (triangle edges)         |
++--------------------------+
+            |
+            v
++-------------------------------------------+
+| Calculate h = cross(ray.direction, edge2) |
++-------------------------------------------+
+            |
+            v
++-----------------------------+
+| Calculate a = dot(edge1, h) |
++-----------------------------+
+            |
+            v
++----------------------------+
+| Check if |a| < EPSILON     |
+|     (ray parallel)         |
++----------------------------+
+            |
+            v
++---------------------------+
+| Calculate f = 1.0 / a     |
++---------------------------+
+            |
+            v
++-----------------------------------+
+| Calculate s = ray.origin - tri.v0 |
++-----------------------------------+
+            |
+            v
++-----------------------------+
+| Calculate u = f * dot(s, h) |
++-----------------------------+
+            |
+            v
++-----------------------------+
+| Check if u < 0 or u > 1     |
+| (out of bounds)             |
++-----------------------------+
+            |
+            v
++------------------------------+
+| Calculate q = cross(s, edge1)|
++------------------------------+
+            |
+            v
++----------------------------------------+
+| Calculate v = f * dot(ray.direction, q)|
++----------------------------------------+
+            |
+            v
++--------------------------------+
+| Check if v < 0 or u + v > 1    |
+| (out of bounds)                |
++--------------------------------+
+            |
+            v
++--------------------------------+
+| Calculate t = f * dot(edge2, q)|
++--------------------------------+
+            |
+            v
++-------------------------------+
+| Check if t < -EPSILON         |
+| (intersection behind)         |
++-------------------------------+
+      /          \
+     /            \
+    v              v
++---------------+   +--------------+
+| t < 0         |   |t >= 0        |
+|(origin inside |   | (calculate   |
+| triangle)     |   | intersection)|
++---------------+   +--------------+
+     \              /
+      \            /
+       v          v
++---------------------------+
+| Store intersection point  |
+|                           |
++---------------------------+
+```
+
+### code c++
+
+    _device__ bool rayTriangleIntersect(const F3Ray& ray, const F3Triangle& triangle, float& t, float3& intersectionPoint) {
+        float3 edge1 = triangle.v1 - triangle.v0;
+        float3 edge2 = triangle.v2 - triangle.v0;
+        float3 h = cross(ray.direction, edge2);
+        float a = dot(edge1, h);
+
+        if (a > -1e-6 && a < 1e-6) return false;
+
+        float f = 1.0f / a;
+        float3 s = ray.origin - triangle.v0;
+        float u = f * dot(s, h);
+
+        if (u < 0.0f || u > 1.0f) return false;
+
+        float3 q = cross(s, edge1);
+        float v = f * dot(ray.direction, q);
+
+        if (v < 0.0f || u + v > 1.0f) return false;
+
+        t = f * dot(edge2, q);
+
+        // Calculate the intersection point
+        if (t > 1e-6) {
+            intersectionPoint = ray.origin + t * ray.direction;
+            //printf("%f %f %f\n",intersectionPoint.x,intersectionPoint.y,intersectionPoint.z); OK
+        }
+        else
+        {
+            intersectionPoint =make_float3(INFINITY, INFINITY, INFINITY);
+        }
+
+        return (t > 1e-6);
+    }
+
+
+
+<<<
+
+## **Function Description: buildBVHNodesParallel**
+
+```plaintext
++-----------------------------------------+
+|            Function                     |
+|     buildBVHNodesParallel               |
+|                                         |
+|  Parameters:                            |
+|  - BVHNode* nodes                       |
+|  - TriangleInfo* triInfo                |
+|  - Triangle* triangles                  |
+|  - int numTriangles                     |
++-----------------------------------------+
+                |
+                v
++-----------------------------------------+
+|       Calculate the index (idx)         |
+|  Each thread processes a unique node    |
++-----------------------------------------+
+                |
+                v
++-----------------------------------------+
+|       Determine the total number of     |
+|       nodes:                            |
+|       totalNodes = 2 * numTriangles - 1 |
++-----------------------------------------+
+                |
+                v
++---------------------+-------------------+
+|                     |                   |
+|      Leaf Node      |    Internal Node  |
+|                     |                   |
++---------------------+-------------------+
+                |                   |
+                v                   v
++----------------------+     +-----------------------+
+| Retrieve the index   |     | Calculate the indices |
+| of the corresponding |     | of the children (left,|
+| triangle             |     | right)                |
++----------------------+     +-----------------------+
+                |                   |
+                v                   v
++---------------------+     +----------------------+
+| Initialize AABB     |     | Calculate bounding   |
+| limits with the     |     | AABB of children     |
+| first vertex        |     +----------------------+
++---------------------+
+                |                   
+                v                   
++---------------------+     
+| Update AABB limits  |     
+| to encompass all    |     
+| triangle vertices   |     
++---------------------+
+```
+
+### *Explanation of the Diagram*
+
+1. **Function `buildBVHNodesParallel`**:
+   - The function takes as input an array of BVH nodes, triangle information, an array of triangles, and the total number of triangles.
+
+2. **Index Calculation**:
+   - Each thread calculates its own index (`idx`) to process a specific node.
+
+3. **Determination of Total Number of Nodes**:
+   - The total number of nodes in the BVH is calculated, which includes both internal and leaf nodes.
+
+4. **Node Management**:
+   - **Leaf Node**:
+     - If the node is a leaf node, the index of the corresponding triangle is retrieved.
+     - The AABB limits are initialized using the first vertex of the triangle and then updated to encompass all its vertices.
+   
+   - **Internal Node**:
+     - If the node is an internal node, the indices of the left and right children are calculated.
+     - The AABB limits are calculated to encompass the children, and the total number of triangles is updated accordingly.
+
+
+### code c++
+
+    _global__ void buildBVHNodesParallel(BVHNode *nodes, TriangleInfo *triInfo,
+                                        Triangle *triangles, int numTriangles) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int totalNodes = 2 * numTriangles - 1;
+
+    if (idx < totalNodes) {
+        BVHNode &node = nodes[idx];
+
+        if (idx >= numTriangles - 1) { // Leaf node
+        int triIdx = triInfo[idx - (numTriangles - 1)].index;
+        // Initialization of the node limits with the first top of the triangle
+        node.bounds.min = node.bounds.max = triangles[triIdx].v0;
+
+        // Calculation of AABB limits for the triangle
+        node.bounds.min =
+            min(node.bounds.min, min(triangles[triIdx].v1, triangles[triIdx].v2));
+        node.bounds.max =
+            max(node.bounds.max, max(triangles[triIdx].v1, triangles[triIdx].v2));
+        node.triangleIndex = triIdx;
+        node.triangleCount = 1;
+        node.leftChild = -1;  // no children for a leaf knot
+        node.rightChild = -1; // no children for a leaf knot
+        } else {                // Internal node
+        int leftChild = 2 * idx + 1;
+        int rightChild = 2 * idx + 2;
+
+        // Verification that children exist before accessing their limits
+        if (leftChild < totalNodes && rightChild < totalNodes) {
+            node.leftChild = leftChild;
+            node.rightChild = rightChild;
+            node.triangleIndex = -1; // no associated triangle
+
+            // Calculation of AABB limits encompassing children
+            node.bounds.min =
+                min(nodes[leftChild].bounds.min, nodes[rightChild].bounds.min);
+            node.bounds.max =
+                max(nodes[leftChild].bounds.max, nodes[rightChild].bounds.max);
+            node.triangleCount =
+                nodes[leftChild].triangleCount + nodes[rightChild].triangleCount;
+        } else {
+            // If children do not exist (rare case), we can reset the node with
+            // default values
+            node.bounds.min = Vec3{0.0f, 0.0f, 0.0f}; // Default values
+            node.bounds.max = Vec3{0.0f, 0.0f, 0.0f}; // Default values
+            node.triangleIndex = -1;
+            node.triangleCount = 0;
+            node.leftChild = -1;
+            node.rightChild = -1;
+        }
+        }
+    }
+    }
+
+<<<
+
+
+## **Function Description: buildBVH_GPU_Parallel_Best_Axis**
+
+```plaintext
++---------------------------------------------------+
+|            Function                               |
+|     buildBVH_GPU_Parallel_Best_Axis               |
+|                                                   |
+|  Parameters:                                      |
+|  - Triangle* d_triangles                          |
+|  - BVHNode* d_nodes                               |
+|  - int numTriangles                               |
++---------------------------------------------------+
+                          |
+                          v
++----------------------------------------------------+
+|        Variable Initialization                     |
+|  - Calculate the total number of nodes (totalNodes)|
+|  - Allocate memory for TriangleInfo and extents    |
++----------------------------------------------------+
+                          |
+                          v
++---------------------------------------------------+
+|        Triangle Information Initialization        |
+|        (Kernel initTriangleInfo)                  |
+|  - Calculate the centroid for each triangle       |
++---------------------------------------------------+
+                          |
+                          v
++---------------------------------------------------+
+|        Extent Calculation                         |
+|        (Kernel computeExtents)                    |
+|  - Find the minimum and maximum limits of the     |
+|    centroids of the triangles                     |
++---------------------------------------------------+
+                          |
+                          v
++---------------------------------------------------+
+|        Optimal Axis Selection                     |
+|  - Compare extents to determine the axis          |
+|    with the largest range                         |
++---------------------------------------------------+
+                          |
+                          v
++-----------------------------------------------------+
+|        Sorting Triangles by Optimal Axis            |
+|  - Use a bitonic sort algorithm to sort TriangleInfo|
+|    based on the selected axis                       |
++-----------------------------------------------------+
+                          |
+                          v
++---------------------------------------------------+
+|        BVH Construction                           |
+|        (Kernel buildBVHNodesParallel)             |
+|  - Build the BVH nodes using the sorted           |
+|    information                                    |
++---------------------------------------------------+
+                          |
+                          v
++---------------------------------------------------+
+|        Memory Deallocation                        |
+|  - Free allocated memory for TriangleInfo,        |
+|    minExtents, and maxExtents                     |
++---------------------------------------------------+
+```
+
+### *Explanation of the Diagram*
+
+1. **Function `buildBVH_GPU_Parallel_Best_Axis`**:
+   - This function aims to construct a BVH from a set of triangles using a parallel approach on a GPU.
+
+2. **Variable Initialization**:
+   - The total number of nodes in the BVH is calculated, and memory is allocated to store triangle information and minimum and maximum extents.
+
+3. **Triangle Information Initialization**:
+   - A kernel is launched to calculate the centroid of each triangle, which will be used to determine how to partition the triangles in the BVH.
+
+4. **Extent Calculation**:
+   - Another kernel computes the minimum and maximum limits of the triangle centroids to identify the axis with the largest range.
+
+5. **Optimal Axis Selection**:
+   - The axis with the largest range is chosen as the one to be used for sorting the triangles.
+
+6. **Sorting Triangles by Optimal Axis**:
+   - The triangles are sorted using a bitonic sort algorithm based on the selected axis, facilitating their grouping during BVH construction.
+
+7. **BVH Construction**:
+   - A kernel actually builds the BVH using the sorted information, creating an efficient hierarchy for ray tracing.
+
+8. **Memory Deallocation**:
+   - Finally, all allocated memory for temporary storage is freed to prevent memory leaks.
+
+
+
+### code c++
+
+    __device__ bool compareTriangles( const TriangleInfo& a, const TriangleInfo& b, int axis )
+    {
+        return a.centroid[axis] < b.centroid[axis];
+    }
+
+    __global__ void initTriangleInfo( Triangle* triangles, TriangleInfo* triInfo, int numTriangles )
+    {
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        if ( idx < numTriangles )
+        {
+            Triangle& tri = triangles[idx];
+            triInfo[idx].centroid = ( tri.v0 + tri.v1 + tri.v2 ) / 3.0f;
+            triInfo[idx].index = idx;
+        }
+    }
+
+    __global__ void bitonicSort( TriangleInfo* triInfo, int j, int k, int numTriangles, int axis )
+    {
+        int i = blockIdx.x * blockDim.x + threadIdx.x;
+        int ixj = i ^ j;
+
+        if ( ( ixj > i ) && ( i < numTriangles ) && ( ixj < numTriangles ) )
+        {
+            bool ascending = ( ( i & k ) == 0 );
+            if ( compareTriangles( triInfo[i], triInfo[ixj], axis ) == ascending )
+            {
+                TriangleInfo temp = triInfo[i];
+                triInfo[i] = triInfo[ixj];
+                triInfo[ixj] = temp;
+            }
+        }
+    }
+
+    __global__ void buildBVHNodesParallel(BVHNode *nodes, TriangleInfo *triInfo,
+                                        Triangle *triangles, int numTriangles) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int totalNodes = 2 * numTriangles - 1;
+
+    if (idx < totalNodes) {
+        BVHNode &node = nodes[idx];
+
+        if (idx >= numTriangles - 1) { // Leaf node
+        int triIdx = triInfo[idx - (numTriangles - 1)].index;
+        // Initialization of the node limits with the first top of the triangle
+        node.bounds.min = node.bounds.max = triangles[triIdx].v0;
+
+        // Calculation of AABB limits for the triangle
+        node.bounds.min =
+            min(node.bounds.min, min(triangles[triIdx].v1, triangles[triIdx].v2));
+        node.bounds.max =
+            max(node.bounds.max, max(triangles[triIdx].v1, triangles[triIdx].v2));
+        node.triangleIndex = triIdx;
+        node.triangleCount = 1;
+        node.leftChild = -1;  // no children for a leaf knot
+        node.rightChild = -1; // no children for a leaf knot
+        } else {                // Internal node
+        int leftChild = 2 * idx + 1;
+        int rightChild = 2 * idx + 2;
+
+        // Verification that children exist before accessing their limits
+        if (leftChild < totalNodes && rightChild < totalNodes) {
+            node.leftChild = leftChild;
+            node.rightChild = rightChild;
+            node.triangleIndex = -1; // no associated triangle
+
+            // Calculation of AABB limits encompassing children
+            node.bounds.min =
+                min(nodes[leftChild].bounds.min, nodes[rightChild].bounds.min);
+            node.bounds.max =
+                max(nodes[leftChild].bounds.max, nodes[rightChild].bounds.max);
+            node.triangleCount =
+                nodes[leftChild].triangleCount + nodes[rightChild].triangleCount;
+        } else {
+            // If children do not exist (rare case), we can reset the node with
+            // default values
+            node.bounds.min = Vec3{0.0f, 0.0f, 0.0f}; // Default values
+            node.bounds.max = Vec3{0.0f, 0.0f, 0.0f}; // Default values
+            node.triangleIndex = -1;
+            node.triangleCount = 0;
+            node.leftChild = -1;
+            node.rightChild = -1;
+        }
+        }
+    }
+    }
+
+    __global__ void computeExtents( TriangleInfo* triInfo, int numTriangles, float* minExtents, float* maxExtents )
+    {
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        if ( idx < numTriangles )
+        {
+            for ( int axis = 0; axis < 3; ++axis )
+            {
+                atomicMin( &minExtents[axis], triInfo[idx].centroid[axis] );
+                atomicMax( &maxExtents[axis], triInfo[idx].centroid[axis] );
+            }
+        }
+    }
+
+    void buildBVH_GPU_Parallel_Best_Axis(Triangle *d_triangles, BVHNode *d_nodes,
+                                        int numTriangles) {
+    std::cout << "[INFO]: buildBVH_GPU_Parallel\n";
+
+    int totalNodes = 2 * numTriangles - 1;
+    int blockSize = 512;
+    int numBlocks = (numTriangles + blockSize - 1) / blockSize;
+
+    TriangleInfo *d_triInfo;
+    HIP_ASSERT( hipMalloc(&d_triInfo, numTriangles * sizeof(TriangleInfo)));
+    hipLaunchKernelGGL(initTriangleInfo, dim3(numBlocks), dim3(blockSize), 0, 0,
+                        d_triangles, d_triInfo, numTriangles);
+
+    // Compute extents
+    float *d_minExtents, *d_maxExtents;
+    HIP_ASSERT( hipMalloc(&d_minExtents, 3 * sizeof(float)));
+    HIP_ASSERT( hipMalloc(&d_maxExtents, 3 * sizeof(float)));
+
+    // Initialize extents
+    float initMin = std::numeric_limits<float>::max();
+    float initMax = std::numeric_limits<float>::lowest();
+    HIP_ASSERT(hipMemset(d_minExtents, *reinterpret_cast<int *>(&initMin),
+                3 * sizeof(float)));
+    HIP_ASSERT(hipMemset(d_maxExtents, *reinterpret_cast<int *>(&initMax),
+                3 * sizeof(float)));
+
+    hipLaunchKernelGGL(computeExtents, dim3(numBlocks), dim3(blockSize), 0, 0,
+                        d_triInfo, numTriangles, d_minExtents, d_maxExtents);
+
+    // Copy extents back to host
+    float h_minExtents[3], h_maxExtents[3];
+    HIP_ASSERT(hipMemcpy(h_minExtents, d_minExtents, 3 * sizeof(float),
+                hipMemcpyDeviceToHost));
+    HIP_ASSERT(hipMemcpy(h_maxExtents, d_maxExtents, 3 * sizeof(float),
+                hipMemcpyDeviceToHost));
+
+    // Find axis with largest extent
+    int bestAxis = 0;
+    float maxExtent = h_maxExtents[0] - h_minExtents[0];
+    for (int axis = 1; axis < 3; ++axis) {
+        float extent = h_maxExtents[axis] - h_minExtents[axis];
+        if (extent > maxExtent) {
+        maxExtent = extent;
+        bestAxis = axis;
+        }
+    }
+
+    // Sort using the best axis
+    for (int k = 2; k <= numTriangles; k *= 2) {
+        for (int j = k / 2; j > 0; j /= 2) {
+        hipLaunchKernelGGL(bitonicSort, dim3(numBlocks), dim3(blockSize), 0, 0,
+                            d_triInfo, j, k, numTriangles, bestAxis);
+        }
+    }
+
+    numBlocks = (totalNodes + blockSize - 1) / blockSize;
+    hipLaunchKernelGGL(buildBVHNodesParallel, dim3(numBlocks), dim3(blockSize), 0,
+                        0, d_nodes, d_triInfo, d_triangles, numTriangles);
+
+    hipFree(d_triInfo);
+    hipFree(d_minExtents);
+    hipFree(d_maxExtents);
+    }
+
+## **Function Description: raytraceKernel_Parallel**
+
+```plaintext
++------------------------------------------------------+
+|                Function                              |
+|            raytraceKernel_Parallel.                  |
+|                                                      |
+|  Parameters:                                         |
+|  - Ray* rays                                         |
+|  - int numRays                                       |
+|  - BVHNode* bvhNodes                                 |
+|  - Triangle* triangles                               |
+|  - int* hitTriangles                                 |
+|  - float* distance                                   |
+|  - Vec3* intersectionPoint                           |
+|  - int* hitId                                        |
++------------------------------------------------------+
+                          |
+                          v
++------------------------------------------------------+
+|                Index Calculation                     |
+|  - Each thread processes a unique ray                |
++------------------------------------------------------+
+                          |
+                          v
++------------------------------------------------------+
+|                Variable Initialization               |
+|  - Initialize the stack array                        |
+|  - Initialize variables to track closest             |
+|    intersections                                     |
++------------------------------------------------------+
+                          |
+                          v
++---------------------------------------------------------+
+|                Main Loop                                |
+|  While the stack is not empty:                          |
+|                                                         |
+|  1. Retrieve the index of the current node              |
+|  2. Check if the ray intersects the AABB of the node    |
+|                                                         |
+|      +---------------------+---------------------+      |
+|      |                     |                     |      |
+|      |       Leaf Node    |      Internal Node   |      |
+|      |                     |                     |      |
+|      +---------------------+---------------------+      |
+|                                                         |
+|      If it is a leaf node:                              |
+|      - Retrieve the corresponding triangle              |
+|      - Test for intersection with the triangle          |
+|      - Update closest intersection information if needed|
+|                                                         |
+|      If it is an internal node:                         |
+|      - Add left and right children to the stack         |
++---------------------------------------------------------+
+                          |
+                          v
++------------------------------------------------------+
+|           Recording Results                          |
+|  - Store the hit triangle, distance, intersection    |
+|    point, and triangle ID in the result arrays       |
++------------------------------------------------------+
+```
+
+### *Explanation of the Diagram*
+
+1. **Function `raytraceKernel_Parallel`**:
+   - This function is designed to perform ray tracing in parallel over a set of rays, using a BVH to optimize intersection searches with triangles.
+
+2. **Index Calculation**:
+   - Each thread calculates its own index (`idx`) to process a specific ray in the `rays` array.
+
+3. **Variable Initialization**:
+   - A stack array is initialized to manage the traversal of the BVH.
+   - Variables to track the best intersection (distance and triangle) are initialized.
+
+4. **Main Loop**:
+   - The main loop continues as long as there are nodes in the stack.
+     - **Index Retrieval**: The index of the current node is retrieved.
+     - **AABB Intersection Check**: The ray is tested to see if it intersects with the AABB of the node.
+     
+     - **Node Management**:
+     - **Leaf Node**:
+       - If the node is a leaf, the corresponding triangle is retrieved.
+       - An intersection with the triangle is tested.
+       - If an intersection is found and it is closer than previous ones, information about this intersection is updated.
+     
+     - **Internal Node**:
+       - If the node is internal, the indices of the left and right children are added to the stack for later processing.
+
+5. **Recording Results**:
+   - After traversing all relevant nodes, results (hit triangle, distance, intersection point, and ID) are recorded in the provided result arrays.
+
+
+### code c++
+
+    __global__ void raytraceKernel_Parallel(Ray *rays, int numRays, BVHNode *bvhNodes,
+                                            int numNodes,
+                                            Triangle *triangles, int numTriangles, int *hitTriangles,
+                                            float *distance,Vec3 *intersectionPoint, int *hitId)
+    {
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        if (idx >= numRays || numNodes <= 0 || numTriangles <= 0)
+            return;
+
+        Ray ray = rays[idx];
+        constexpr int MAX_STACK_SIZE = 64;
+        int stack[MAX_STACK_SIZE];
+        int stackPtr = 0;
+
+        stack[stackPtr++] = 0;
+
+        float closestT = INFINITY;
+        int closestTriangle = -1;
+        int closestIntersectionId = -1;
+        Vec3 intersectionPointT;
+        intersectionPointT.x = INFINITY;
+        intersectionPointT.y = INFINITY;
+        intersectionPointT.z = INFINITY;
+
+        Vec3 closestIntersectionPoint;
+        closestIntersectionPoint.x = INFINITY;
+        closestIntersectionPoint.y = INFINITY;
+        closestIntersectionPoint.z = INFINITY;
+
+        constexpr float angleLim = 0.6f;
+
+        while (stackPtr > 0 && stackPtr < MAX_STACK_SIZE)
+        {
+            int nodeIdx = stack[--stackPtr];
+            if (nodeIdx < 0 || nodeIdx >= numNodes)
+                continue;
+
+            BVHNode &node = bvhNodes[nodeIdx];
+
+        // if (!rayAABBIntersect4(ray, node.bounds))
+            //    continue;
+
+            if (node.triangleCount == 1 && node.triangleIndex >= 0 && node.triangleIndex < numTriangles)
+            {
+                Triangle &tri = triangles[node.triangleIndex];
+                //if (sameDirectionTest(tri, ray, angleLim))
+                {
+                    float t;
+                    Vec3 intersectionPointT;
+                    if (rayTriangleIntersect4(ray, tri, t, intersectionPointT))
+                    {
+                        if (t < closestT)
+                        {
+                            closestT = t;
+                            closestTriangle = node.triangleIndex;
+                            closestIntersectionPoint = intersectionPointT;
+                            closestIntersectionId = tri.id;
+                        }
+                    }
+                }
+            }
+            else if (stackPtr < MAX_STACK_SIZE - 1)
+            {
+                if (node.leftChild >= 0 && node.leftChild < numNodes)
+                    stack[stackPtr++] = node.leftChild;
+                if (node.rightChild >= 0 && node.rightChild < numNodes && stackPtr < MAX_STACK_SIZE)
+                    stack[stackPtr++] = node.rightChild;
+            }
+        }
+
+        hitTriangles[idx] = closestTriangle;
+        distance[idx] = closestT;
+        intersectionPoint[idx] = closestIntersectionPoint;
+        hitId[idx] = closestIntersectionId;
+    }
+
+### Conclusion
+[.text-justify]
+The pure HIP BVH implementation showcases a robust framework for ray tracing, emphasizing efficient intersection calculations and spatial organization through well-defined structures and functions. By leveraging GPU parallelism and optimizing BVH construction methods, this approach enhances rendering performance in complex 3D scenes. As research in this area progresses, further refinements in intersection algorithms and data structures will be vital for achieving even greater efficiency in real-time rendering applications.
+
+
+<<< 
+
+== Linear Bounding Volume Hierarchy (LBVH) Implementation for Ray Tracing
+
+[.text-justify]
+The implementation of the Linear Bounding Volume Hierarchy (LBVH) provides an elegant and well-structured solution for ray tracing, as detailed in the repository [LBVH](https://github.com/ToruNiina/lbvh). This approach utilizes key structures such as **Ray**, **Triangle**, and **HitRay** to efficiently manage intersection queries.
+
+### Core Structures and Intersection Functions
+
+1. **Core Structures**:
+   - **Ray**: Represents the ray being traced through the scene.
+   - **Triangle**: Defines the geometric primitive utilized in intersection tests.
+   - **HitRay**: Captures the results of ray-object intersection calculations.
+
+2. **Intersection Functions**:
+   - The function `rayTriangleIntersect` employs the Möller–Trumbore algorithm to determine intersections between rays and triangles, ensuring efficient computation.
+
+### GPU Kernels for Ray Tracing
+[.text-justify]
+Kernels such as **process_single_point_new** and **rayTracingKernel** leverage GPU capabilities to perform large-scale tracing operations. The kernel `process_single_point_new` specifically queries the LBVH to find the closest object to a given point. It utilizes the `distance_calculator` structure to evaluate distances to objects within the BVH.
+
+### Advantages of Using LBVH
+
+The use of `lbvh::query_device` to find the nearest object offers several significant advantages:
+
+- **Efficiency**: LBVH is optimized for GPUs, allowing rapid searches across a large number of 3D objects.
+- **Reduction of Search Space**: Instead of testing intersections with all objects in the scene, LBVH enables quick exclusion of large areas that do not contain relevant objects for the ray.
+- **Parallelism**: The function is designed for GPU contexts, facilitating many queries to be executed in parallel, which is crucial for enhancing ray tracing performance.
+- **Flexibility**: `query_device` supports various types of queries, including nearest neighbor searches, which are essential for effective ray tracing.
+- **Handling Edge Cases**: The LBVH structure and `query_device` function efficiently manage scenarios where multiple objects may be at similar distances.
+- **GPU Optimization**: The implementation is tailored for GPU architectures, leveraging hardware features to maximize performance.
+
+### Implementation
+
+# *LBVH & Ray Tracing with AMD Hip*
+
+
+## **Function Description: rayTracingKernelExploration**
+
+### **Objective**
+The kernel aims to explore the direction of rays to identify triangles that may be intersected. It uses an iteration mechanism to adjust the ray's position based on distances and angles relative to the detected triangles.
+
+### **Key Components**
+1. **Initialization**: 
+   - Each thread processes a ray.
+   - Initializes results for collision detection.
+
+2. **Iteration Loop**:
+   - The kernel uses a loop to explore different positions along the ray's direction.
+   - Adjusts the search position based on angles and distances to the triangles.
+
+3. **Angle and Distance Calculations**:
+   - Calculates the angle between the ray and the vector from the ray's origin to the triangle's centroid.
+   - Checks if the triangle is close enough for an intersection test.
+
+4. **Intersection Test**:
+   - If a candidate triangle is found, it checks for an intersection with the ray.
+
+5. **Results Storage**:
+   - If an intersection occurs, it stores the results in `d_HitRays`.
+
+### **Workflow Diagram**
+
+```plaintext
++--------------------------+
+| Start Kernel Execution   |
++--------------------------+
+            |
+            v
++--------------------------+
+| Initialize Variables     |
+| (e.g., hitResults,       |
+|  distanceResults)        |
++--------------------------+
+            |
+            v
++---------------------------+
+| For Loop (maxIterations)  |<------------------------------------+
+|                           |                                     |
+|   +------------------+    |                                     |
+|   | Calculate pos    |    |                                     |
+|   | (ray.origin +    |    |                                     |
+|   |  ray.direction*) |    |                                     |
+|   +------------------+    |                                     |
+|            |              |                                     |
+|            v              |                                     |
+| +----------------------+  |                                     |
+| | Query BVH for        |  |                                     |
+| | Closest Triangle     |  |                                     |
+| +----------------------+  |                                     |
+|            |              |                                     |
+|            v              |                                     |
+| +-----------------------+ |                                     |
+| | Check if a triangle   | |                                     |
+| | was found             | <------------------------------------+|
+| +-----------------------+ |                                     |
+|            |              |                                     |
+|            v              |                                     |
+| +----------------------+  |                                     |
+| | Calculate Angles and  |  <-------------------------------------+
+| | Distances             |  
+| +----------------------+  
+|            |
+|            v
++--------------------------+
+| Check Conditions         |
++--------------------------+
+      /          \
+     /            \
+    v              v
++---------+      +---------+
+| Triangle|      | No      |
+| Found   |      | Triangle|
++---------+      +---------+
+     \              /
+      \            /
+       v          v
++----------------------------+
+| Perform Intersection Test  |
++----------------------------+
+       /          \
+      /            \
+     v              v
++---------+      +---------+
+| Triangle|      | No      |
+| Hit     |      | Hit     |
++---------+      +---------+
+     \              /
+      \            /
+       v          v
++---------------------------+
+| Store Results in d_HitRays|
++---------------------------+
+```
+
+### **Detailed Steps**
+
+1. **Initialization**: 
+   - Each thread initializes its variables, including collision results and distances.
+  
+2. **For Loop**: 
+   - The loop continues until a maximum number of iterations is reached (20 in this case).
+
+3. **Position Calculation**: 
+   - The position along the ray is calculated by adding a small offset (`delta`) to explore in the direction of the ray.
+   
+4. **Querying BVH**: 
+   - The kernel queries the BVH structure to find the closest triangle at the calculated position.
+   
+5. **Angle and Distance Calculations**: 
+   - Angles are calculated between the ray and the vector leading to the triangle's centroid.
+   - Checks if the triangle is close enough to perform an intersection test.
+
+6. **Intersection Test**: 
+   - If a candidate triangle is found, it checks for an intersection with the ray.
+   
+7. **Results Storage**: 
+   - Depending on whether an intersection occurred or not, results are stored in `d_HitRays`.
+
+
+code c++
+
+    template <typename T, typename U>
+    __global__ void rayTracingKernelExploration( lbvh::bvh_device<T, U> bvh_dev, Ray* rays,
+                                                HitRay* d_HitRays, int numRays )
+    {
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        if ( idx >= numRays ) return;
+
+        Ray ray = rays[idx];
+        // d_HitRays[idx] = { -1, INFINITY, make_float3(INFINITY), -1 }; // Initialize results
+
+        d_HitRays[idx].hitResults = -1;
+        d_HitRays[idx].distanceResults = INFINITY; // distance
+        d_HitRays[idx].intersectionPoint = make_float3( INFINITY, INFINITY, INFINITY );
+        d_HitRays[idx].idResults = -1;
+
+        constexpr float epsilon = 0.001f;
+        constexpr float angleLimit = 0.6f;
+        constexpr int maxIterations = 30;
+
+        float delta = -epsilon * 1.0f; // Initial delta for ray advancement
+        bool foundCandidate = false;
+        Triangle closestTriangle;
+        int closestTriangleId = -1;
+
+        for ( int iteration = 0; iteration < maxIterations; ++iteration )
+        {
+            float4 currentPosition = ray.origin + ray.direction * delta;
+            const auto nearestTriangleIndex = lbvh::query_device( bvh_dev, lbvh::nearest( currentPosition ), distance_calculator() );
+
+            if ( nearestTriangleIndex.first != 0xFFFFFFFF )
+            {
+
+                // printf("oRay %d: Nearest object index: %u Distance to nearest object: %f\n", idx, nearestTriangleIndex.first,nearestTriangleIndex.second);
+
+                const Triangle& hitTriangle = bvh_dev.objects[nearestTriangleIndex.first];
+                float4 triangleCenter = ( hitTriangle.v1 + hitTriangle.v2 + hitTriangle.v3 ) / 3.0f;
+                float4 directionToTriangle = triangleCenter - ray.origin;
+
+                float angleToTriangle = fabs( angleScalar( directionToTriangle, ray.direction ) );
+                float distanceToTriangle = length( directionToTriangle );
+                float halfOpeningAngle = calculateHalfOpeningAngle( hitTriangle, ray.origin );
+
+                if ( halfOpeningAngle > 0.2f )
+                { // Close object check /:0.2
+                    float t;
+                    if ( rayTriangleIntersect( ray, hitTriangle, t ) )
+                    {
+                        float4 hit_point = ray.origin + ray.direction * t;
+                        d_HitRays[idx].hitResults = nearestTriangleIndex.first;
+                        d_HitRays[idx].distanceResults = t - length( ray.origin - currentPosition ); // Corrected distance
+                        d_HitRays[idx].intersectionPoint = make_float3( hit_point.x, hit_point.y, hit_point.z );
+                        d_HitRays[idx].idResults = hitTriangle.id;
+                        return; // Exit early on successful intersection
+                    }
+                }
+                else if ( angleToTriangle > angleLimit )
+                {
+                    delta += distanceToTriangle * 0.5f + epsilon; // Move further away
+                }
+                else
+                {
+                    foundCandidate = true;
+                    closestTriangleId = nearestTriangleIndex.first;
+                    closestTriangle = hitTriangle;
+                }
+            }
+            else
+            {
+                delta += epsilon * exp( iteration ); // Adjust delta for next iteration
+            }
+        }
+
+        // If no intersection was found but a candidate was identified
+        if ( foundCandidate && closestTriangleId != -1 )
+        {
+            float t;
+            if ( rayTriangleIntersect( ray, closestTriangle, t ) )
+            {
+                float4 hit_point = ray.origin + ray.direction * t;
+                d_HitRays[idx].hitResults = closestTriangleId;
+                d_HitRays[idx].distanceResults = t; // distance
+                d_HitRays[idx].intersectionPoint = make_float3( hit_point.x, hit_point.y, hit_point.z );
+                d_HitRays[idx].idResults = closestTriangle.id;
+                // d_HitRays[idx].idResults = hit_tri.id;
+            }
+        }
+
+        // Search again if inside triangle
+        // We search the area for the closest triangle
+        if ( closestTriangleId == -1 )
+        {
+            // printf("[%i] NOT FOUND\n", idx);
+            const float epsilonC = 0.001f;
+            const float4 directions[14] = {
+                    make_float4( 1.0f, 0.0f, 0.0f, 0.0f),
+                    make_float4(-1.0f, 0.0f, 0.0f, 0.0f),
+                    make_float4( 0.0f, 1.0f, 0.0f, 0.0f),
+                    make_float4( 0.0f,-1.0f, 0.0f, 0.0f),
+                    make_float4( 0.0f, 0.0f, 1.0f, 0.0f),
+                    make_float4( 0.0f, 0.0f,-1.0f, 0.0f),
+
+                    make_float4( 0.577f, 0.577f, 0.577f, 0.0f),
+                    make_float4( 0.577f, 0.577f,-0.577f, 0.0f),
+                    make_float4(-0.577f, 0.577f, 0.577f, 0.0f),
+                    make_float4(-0.577f, 0.577f,-0.577f, 0.0f),
+
+                    make_float4( 0.577f,-0.577f, 0.577f, 0.0f),
+                    make_float4( 0.577f,-0.577f,-0.577f, 0.0f),
+                    make_float4(-0.577f,-0.577f, 0.577f, 0.0f),
+                    make_float4(-0.577f,-0.577f,-0.577f, 0.0f)
+            };
+
+            for ( int i = 0; i < 14; ++i )
+            {
+                float4 currentPosition = ray.origin + directions[i] * epsilonC;
+                const auto nearestTriangleIndex = lbvh::query_device( bvh_dev, lbvh::nearest( currentPosition ), distance_calculator() );
+
+                if ( nearestTriangleIndex.first != 0xFFFFFFFF )
+                {
+                    const Triangle& hitTriangle = bvh_dev.objects[nearestTriangleIndex.first];
+                    if ( pointInTriangle( currentPosition, hitTriangle, 0.001f ) )
+                    {
+                        d_HitRays[idx].hitResults = nearestTriangleIndex.first;
+                        d_HitRays[idx].distanceResults = 0.0f;
+                        d_HitRays[idx].intersectionPoint = make_float3( rays[idx].origin.x, rays[idx].origin.y, rays[idx].origin.z );
+                        d_HitRays[idx].idResults = hitTriangle.id;
+                        break; // Exit the loop once we find a valid intersection
+                    }
+                }
+            }
+        }
+    }
+
+<<<
+
+
+
+== Summary and Synthesis Conclusion
+[.text-justify]
+In summary, these various implementations highlight the importance of adopting appropriate data structures and applying efficient algorithms to optimize the ray tracing process. The exploration of BVH, AABB, octree structures, pure HIP BVH, and LBVH demonstrates that each method has unique advantages tailored to specific use cases in graphics rendering. 
+[.text-justify]
+The best technique to outperform existing implementations, such as bvh.v2, may involve a well-suited combination of these techniques or adapting the bvh.v2 program (originally designed for CPU) for GPU use. By integrating elements from different approaches—such as optimizing data structures for spatial organization and leveraging parallel processing capabilities—future implementations can achieve improved performance and efficiency in real-time rendering applications. 
+
